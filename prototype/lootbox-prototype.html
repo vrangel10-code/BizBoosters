@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BizBoosters Lootbox</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom Animations */
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.5) translateY(50px); opacity: 0; }
+            70% { transform: scale(1.1) translateY(-10px); opacity: 1; }
+            100% { transform: scale(1) translateY(0); opacity: 1; }
+        }
+
+        @keyframes glow {
+            0% { box-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
+            50% { box-shadow: 0 0 30px rgba(255, 215, 0, 1), 0 0 60px rgba(255, 255, 255, 0.8); }
+            100% { box-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
+        }
+
+        .shake-animation {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both infinite;
+        }
+
+        .card-reveal {
+            animation: popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        .legendary-glow {
+            animation: glow 2s infinite;
+        }
+
+        /* Card Base Styles */
+        .bb-card {
+            width: 160px;
+            height: 220px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 5rem;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 4px 6px rgba(0,0,0,0.4);
+            position: relative;
+            overflow: hidden;
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5), 0 10px 20px rgba(0,0,0,0.3);
+            background-color: #1e293b;
+        }
+
+        .bb-card::before {
+            content: '';
+            position: absolute;
+            top: 6px; left: 6px; right: 6px; bottom: 6px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 8px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .bb-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 8px;
+            z-index: 5;
+        }
+
+        /* Custom Scrollbar for Modal */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1e293b;
+            border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+
+        /* Rarity Themes */
+        .card-C { background: linear-gradient(135deg, #3b82f6, #1d4ed8); border-color: #60a5fa; }
+        .card-U { background: linear-gradient(135deg, #10b981, #047857); border-color: #34d399; }
+        .card-R { background: linear-gradient(135deg, #8b5cf6, #5b21b6); border-color: #a78bfa; }
+        .card-L { background: linear-gradient(135deg, #fbbf24, #b45309); border-color: #fde68a; color: #fffbeb; }
+    </style>
+</head>
+<body class="bg-slate-900 min-h-screen text-slate-100 font-sans selection:bg-purple-500 selection:text-white pb-10">
+
+    <div class="max-w-4xl mx-auto pt-10 px-4 relative">
+        
+        <!-- Header -->
+        <div class="text-center mb-10">
+            <h1 class="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-yellow-400 mb-2">
+                BizBoosters Lootbox
+            </h1>
+            <p class="text-slate-400">Persistent live drop rates with per-card limits.</p>
+            <div id="connection-status" class="mt-2 inline-block px-3 py-1 rounded-full text-xs font-semibold bg-yellow-500/20 text-yellow-400 border border-yellow-500/50">
+                Checking Storage...
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            
+            <!-- Left Panel: Odds & Info -->
+            <div class="bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700 h-fit">
+                <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                    <span class="text-2xl text-purple-400">📊</span> Live Drop Rates
+                </h2>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center p-2 rounded bg-slate-900/50 border border-blue-900/50">
+                        <div class="flex flex-col">
+                            <span class="text-blue-400 font-semibold">Common (C)</span>
+                            <span id="count-C" class="text-xs text-slate-400">0 left</span>
+                        </div>
+                        <span id="chance-C" class="text-slate-300 font-bold">0.0%</span>
+                    </div>
+                    <div class="flex justify-between items-center p-2 rounded bg-slate-900/50 border border-green-900/50">
+                        <div class="flex flex-col">
+                            <span class="text-green-400 font-semibold">Uncommon (U)</span>
+                            <span id="count-U" class="text-xs text-slate-400">0 left</span>
+                        </div>
+                        <span id="chance-U" class="text-slate-300 font-bold">0.0%</span>
+                    </div>
+                    <div class="flex justify-between items-center p-2 rounded bg-slate-900/50 border border-purple-900/50">
+                        <div class="flex flex-col">
+                            <span class="text-purple-400 font-semibold">Rare (R)</span>
+                            <span id="count-R" class="text-xs text-slate-400">0 left</span>
+                        </div>
+                        <span id="chance-R" class="text-slate-300 font-bold">0.0%</span>
+                    </div>
+                    <div class="flex justify-between items-center p-2 rounded bg-slate-900/50 border border-yellow-900/50">
+                        <div class="flex flex-col">
+                            <span class="text-yellow-400 font-semibold">Legendary (L)</span>
+                            <span id="count-L" class="text-xs text-slate-400">0 left</span>
+                        </div>
+                        <span id="chance-L" class="text-slate-300 font-bold">0.0%</span>
+                    </div>
+                </div>
+                
+                <div id="pool-total" class="text-center text-slate-400 text-sm mt-5 font-semibold">
+                    0 / 0 Cards Remaining
+                </div>
+
+                <!-- Deck List Button -->
+                <button onclick="window.openDeckList()" class="mt-5 w-full bg-slate-700/30 hover:bg-slate-700/60 text-slate-300 font-semibold py-2.5 rounded-xl transition-all text-sm border border-slate-600 flex items-center justify-center gap-2 shadow-sm">
+                    View Full Deck List
+                </button>
+            </div>
+
+            <!-- Center Panel: The Game Area -->
+            <div class="bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700 flex flex-col items-center justify-center min-h-[400px] relative overflow-hidden">
+                
+                <!-- Idle / Chest State -->
+                <div id="chest-container" class="flex flex-col items-center z-10 transition-opacity duration-300">
+                    <div id="chest" class="cursor-pointer drop-shadow-2xl hover:scale-105 transition-transform mb-8" onclick="window.rollLootbox()">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-40 h-40">
+                            <!-- Chest base -->
+                            <path d="M3 10C3 8.89543 3.89543 8 5 8H19C20.1046 8 21 8.89543 21 10V20C21 21.1046 20.1046 22 19 22H5C3.89543 22 3 21.1046 3 20V10Z" fill="#A0522D"/>
+                            <!-- Lid -->
+                            <path d="M3 10C3 6.68629 5.68629 4 9 4H15C18.3137 4 21 6.68629 21 10H3Z" fill="#8B4513"/>
+                            <!-- Details -->
+                            <rect x="2" y="9" width="20" height="2" fill="#FFD700"/>
+                            <path d="M11 9H13V13C13 13.5523 12.5523 14 12 14C11.4477 14 11 13.5523 11 13V9Z" fill="#FFD700"/>
+                            <circle cx="12" cy="12" r="0.5" fill="#A0522D"/>
+                            <!-- Metal bands -->
+                            <rect x="6" y="4.5" width="2" height="17.5" fill="#2d3748" opacity="0.6"/>
+                            <rect x="16" y="4.5" width="2" height="17.5" fill="#2d3748" opacity="0.6"/>
+                        </svg>
+                    </div>
+                    <button id="roll-btn" onclick="window.rollLootbox()" class="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 px-8 rounded-full shadow-lg transform transition hover:-translate-y-1 active:translate-y-0 text-lg">
+                        Open Lootbox
+                    </button>
+                    <p id="action-text" class="text-slate-400 text-sm mt-3 h-5">Click to open...</p>
+                </div>
+
+                <!-- Result State (Hidden Initially) -->
+                <div id="result-container" class="hidden absolute inset-0 bg-slate-800 flex flex-col items-center justify-center z-20">
+                    <h3 id="rarity-title" class="text-2xl font-bold mb-6 tracking-wider"></h3>
+                    
+                    <div id="card-display" class="bb-card mb-16">
+                        <img id="card-image" src="" alt="Lootbox Card" onerror="this.src='https://placehold.co/160x220/1e293b/ffffff?text=Image+Blocked+by+Drive'" />
+                    </div>
+
+                    <button onclick="window.resetLootbox()" class="mt-8 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 px-8 rounded-full transition shadow-lg">
+                        Close Card
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Panel: Marketplace -->
+            <div class="bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700 h-fit flex flex-col">
+                <h2 class="text-xl font-bold mb-6 flex items-center gap-2">
+                    <span class="text-2xl text-emerald-400">⚖️</span> Marketplace Trades
+                </h2>
+                
+                <div class="space-y-4 flex-grow">
+                    <button id="upg-C" onclick="window.initiateTrade('C', 'U')" class="w-full bg-blue-500/20 text-blue-300 hover:bg-blue-500/40 disabled:opacity-20 disabled:cursor-not-allowed text-sm py-4 rounded-xl transition-all font-bold uppercase border border-blue-500/30 shadow-md">
+                        Trade 3 Common
+                    </button>
+                    
+                    <button id="upg-U" onclick="window.initiateTrade('U', 'R')" class="w-full bg-green-500/20 text-green-300 hover:bg-green-500/40 disabled:opacity-20 disabled:cursor-not-allowed text-sm py-4 rounded-xl transition-all font-bold uppercase border border-green-500/30 shadow-md">
+                        Trade 3 Uncommon
+                    </button>
+                    
+                    <button id="upg-R" onclick="window.initiateTrade('R', 'L')" class="w-full bg-purple-500/20 text-purple-300 hover:bg-purple-500/40 disabled:opacity-20 disabled:cursor-not-allowed text-sm py-4 rounded-xl transition-all font-bold uppercase border border-purple-500/30 shadow-md">
+                        Trade 3 Rare
+                    </button>
+                </div>
+
+                <div class="mt-8 pt-6 border-t border-slate-700 space-y-3">
+                    <button onclick="window.openClaimModal()" class="w-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/40 py-3 rounded-xl transition-all font-bold uppercase flex justify-center items-center gap-2 border border-emerald-500/30">
+                        Claim / Return Cards
+                    </button>
+                    <button onclick="window.restockPool()" class="w-full bg-red-500/20 text-red-400 hover:bg-red-500/40 py-3 rounded-xl transition-all font-bold uppercase flex justify-center items-center gap-2 border border-red-500/30">
+                        Reset Deck
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Trade Selection Modal -->
+    <div id="trade-modal" class="hidden fixed inset-0 bg-slate-950/90 z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+        <div class="bg-slate-800 rounded-2xl w-full max-w-5xl max-h-[85vh] flex flex-col shadow-2xl border border-slate-700 overflow-hidden">
+            <!-- Header -->
+            <div class="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-800 z-10">
+                <h2 id="trade-modal-title" class="text-2xl font-bold text-white">
+                    Select 3 Cards to Return
+                </h2>
+                <button onclick="window.closeTradeModal()" class="text-slate-400 hover:text-white transition-colors p-2 bg-slate-700/50 hover:bg-slate-700 rounded-lg">
+                    Close
+                </button>
+            </div>
+            
+            <!-- Grid Content -->
+            <div id="trade-list-content" class="p-6 overflow-y-auto space-y-8 custom-scrollbar">
+                <!-- Populated dynamically via JS -->
+            </div>
+
+            <!-- Footer Action -->
+            <div class="p-6 border-t border-slate-700 bg-slate-800 flex justify-between items-center z-10">
+                <div id="trade-selection-count" class="text-lg font-bold text-slate-300">
+                    Selected: <span id="trade-count-value" class="text-blue-400">0</span> / 3
+                </div>
+                <button id="confirm-trade-btn" onclick="window.executeTrade()" disabled class="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:from-slate-600 disabled:to-slate-600 disabled:text-slate-400 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg">
+                    Confirm Trade & Open
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Claim / Return Cards Modal -->
+    <div id="claim-modal" class="hidden fixed inset-0 bg-slate-950/90 z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+        <div class="bg-slate-800 rounded-2xl w-full max-w-5xl max-h-[85vh] flex flex-col shadow-2xl border border-slate-700 overflow-hidden">
+            <!-- Header -->
+            <div class="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-800 z-10">
+                <h2 class="text-2xl font-bold text-white">
+                    Claim / Return Cards to Pool
+                </h2>
+                <button onclick="window.closeClaimModal()" class="text-slate-400 hover:text-white transition-colors p-2 bg-slate-700/50 hover:bg-slate-700 rounded-lg">
+                    Close
+                </button>
+            </div>
+            
+            <!-- Grid Content -->
+            <div id="claim-list-content" class="p-6 overflow-y-auto space-y-4 custom-scrollbar">
+                <!-- Populated dynamically via JS -->
+            </div>
+
+            <!-- Footer Action -->
+            <div class="p-6 border-t border-slate-700 bg-slate-800 flex justify-between items-center z-10">
+                <div class="text-lg font-bold text-slate-300">
+                    Total Returning: <span id="claim-total-value" class="text-emerald-400">0</span>
+                </div>
+                <button id="confirm-claim-btn" onclick="window.executeClaim()" disabled class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-600 disabled:to-slate-600 disabled:text-slate-400 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg">
+                    Confirm Return
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Full Deck List Modal -->
+    <div id="deck-list-modal" class="hidden fixed inset-0 bg-slate-950/90 z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+        <div class="bg-slate-800 rounded-2xl w-full max-w-5xl max-h-[85vh] flex flex-col shadow-2xl border border-slate-700 overflow-hidden">
+            
+            <div class="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-800 z-10">
+                <h2 class="text-2xl font-bold text-white">
+                    Remaining Deck List
+                </h2>
+                <button onclick="window.closeDeckList()" class="text-slate-400 hover:text-white transition-colors p-2 bg-slate-700/50 hover:bg-slate-700 rounded-lg">
+                    Close
+                </button>
+            </div>
+            
+            <div id="deck-list-content" class="p-6 overflow-y-auto space-y-8 custom-scrollbar">
+                <!-- Dynamically populated via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Logic & Cloud/Local Storage Backend -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ==========================================
+        // HOSTING CONFIGURATION
+        // ==========================================
+        const SAVE_KEY = 'bizboosters_gamestate_v1';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { projectId: "bizboosters-local" };
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'bizboosters-app';
+        
+        let app, auth, db, userId;
+        let unsubscribeSnapshot = null;
+
+        // ==========================================
+        // CARD ASSETS CONFIGURATION
+        // ==========================================
+        const raritiesConfig = {
+            'C': { 
+                id: 'C', name: 'COMMON', colorClass: 'text-blue-400', cardClass: 'card-C', maxPerType: 10,
+                images: [
+                    'https://drive.google.com/file/d/1Ggoo8vdJKkg7-iOVlgRYs0XIcD-7kwDR/view?usp=drive_link',
+                    'https://drive.google.com/file/d/1klCdvje_SoY8FYEilmMuZgnTWnokFK2H/view?usp=drive_link',
+                    'https://drive.google.com/file/d/1eAmpJ-qrPLx8opRIw4ZHhONP9NT8WiGC/view?usp=drive_link',
+                    'https://drive.google.com/file/d/1_CIonNJ2X23dXWG9drVZ8oW8lBDc072b/view?usp=drive_link',
+                    'https://drive.google.com/file/d/13XonKcEfwN-aozdhc5B19r7LmRT_T5qB/view?usp=drive_link',
+                    'https://drive.google.com/file/d/1f9k1QvDlJHqYRvoUoOTApQBC8I4dkRt4/view?usp=drive_link'
+                ]
+            },
+            'U': { 
+                id: 'U', name: 'UNCOMMON', colorClass: 'text-green-400', cardClass: 'card-U', maxPerType: 5,
+                images: [
+                    'https://drive.google.com/file/d/1PXNtmFnDwVLmcRTZ1QbEnnVnjonE-WFq/view?usp=sharing',
+                    'https://drive.google.com/file/d/1qjGKuYbqdnzNngIDA8UPPmkpsH8ver6O/view?usp=sharing',
+                    'https://drive.google.com/file/d/1TugnHHpGMizzN850q17jZOnrKrwUW2ah/view?usp=sharing',
+                    'https://drive.google.com/file/d/1YSHRUrcB8F041LoNQHTkstXXOyg9ZJJw/view?usp=sharing',
+                    'https://drive.google.com/file/d/1wZdxw4hH7LNGxUGgEkU5xKXw6W9KEB-x/view?usp=sharing',
+                    'https://drive.google.com/file/d/1w8BGao1S_5ygojTYAkGLAsqm_xivWFM1/view?usp=sharing'
+                ]
+            },
+            'R': { 
+                id: 'R', name: 'RARE', colorClass: 'text-purple-400', cardClass: 'card-R', maxPerType: 2,
+                images: [
+                    'https://drive.google.com/file/d/1B5gJPJq9AATv2EknmqgGfQeTCvdK7zEs/view?usp=sharing',
+                    'https://drive.google.com/file/d/11_j21B_vPUReSSV8Y7zxWZNUCl3bzqoD/view?usp=sharing',
+                    'https://drive.google.com/file/d/1uKOP3wFvrhL5EbdbV-TLYtlfYgjqbpkJ/view?usp=sharing',
+                    'https://drive.google.com/file/d/1IxI1MAy4D9wHjifP0-BF6GFDhhHPru9E/view?usp=sharing',
+                    'https://drive.google.com/file/d/11oPOgBe0ig3dUh6Nm4v9KuUtxPMLfiJK/view?usp=sharing'
+                ]
+            },
+            'L': { 
+                id: 'L', name: 'LEGENDARY', colorClass: 'text-yellow-400', cardClass: 'card-L', maxPerType: 1,
+                images: [
+                    'https://drive.google.com/file/d/1SrD_Us8fgIsb6S7nEwfnOXw-XmDixu-D/view?usp=sharing',
+                    'https://drive.google.com/file/d/12hfxHeY0ZyiVdRUmj5NZ7eu9ZMRhqj5C/view?usp=drive_link',
+                    'https://drive.google.com/file/d/155F0HP_F2VpOuJ95HCGlrzBNfACrtxgi/view?usp=drive_link'
+                ]
+            }
+        };
+
+        const MAX_CARDS = Object.values(raritiesConfig).reduce((acc, r) => acc + (r.images.length * r.maxPerType), 0);
+
+        let isRolling = false;
+        let isResultScreen = false;
+        let gameState = { pool: {}, detailedPool: {}, inventory: { C: 0, U: 0, R: 0, L: 0 } };
+        
+        let currentTradeSource = null;
+        let currentTradeTarget = null;
+        let currentTradeSelection = [];
+        let currentClaimSelection = { C: [], U: [], R: [], L: [] };
+
+        function buildInitialPool() {
+            const detailed = {
+                C: raritiesConfig.C.images.map(() => raritiesConfig.C.maxPerType),
+                U: raritiesConfig.U.images.map(() => raritiesConfig.U.maxPerType),
+                R: raritiesConfig.R.images.map(() => raritiesConfig.R.maxPerType),
+                L: raritiesConfig.L.images.map(() => raritiesConfig.L.maxPerType)
+            };
+            const overall = {
+                C: detailed.C.reduce((a, b) => a + b, 0),
+                U: detailed.U.reduce((a, b) => a + b, 0),
+                R: detailed.R.reduce((a, b) => a + b, 0),
+                L: detailed.L.reduce((a, b) => a + b, 0)
+            };
+            return { detailed, overall };
+        }
+
+        const initialSetup = buildInitialPool();
+        gameState.detailedPool = initialSetup.detailed;
+        gameState.pool = initialSetup.overall;
+
+        function getDirectImageUrl(url) {
+            if (!url) return '';
+            const driveRegex = /(?:\/file\/d\/|id=)([a-zA-Z0-9_-]+)/;
+            const match = url.match(driveRegex);
+            if (match && match[1]) {
+                return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w600`;
+            }
+            return url;
+        }
+
+        function setCloudStatus(isSuccess, message) {
+            const statusEl = document.getElementById('connection-status');
+            if (isSuccess) {
+                statusEl.innerText = message;
+                statusEl.className = "mt-2 inline-block px-3 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-400 border border-green-500/50";
+            } else {
+                statusEl.innerText = message;
+                statusEl.className = "mt-2 inline-block px-3 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/50";
+            }
+        }
+        
+        function loadLocalState() {
+            try {
+                const saved = localStorage.getItem(SAVE_KEY);
+                if (saved) {
+                    syncGameState(JSON.parse(saved));
+                    setCloudStatus(true, "💾 Local Save Loaded");
+                    return true;
+                }
+            } catch(e) {
+                console.error("Failed to load local save:", e);
+            }
+            return false;
+        }
+
+        function syncGameState(data) {
+            if (!data) return;
+            let needsRebuild = !data.detailedPool;
+            if(data.detailedPool) {
+                ['C', 'U', 'R', 'L'].forEach(r => {
+                    if(!data.detailedPool[r] || data.detailedPool[r].length !== raritiesConfig[r].images.length) needsRebuild = true;
+                });
+            }
+
+            if (needsRebuild) {
+                const newPools = buildInitialPool();
+                gameState.detailedPool = newPools.detailed;
+                gameState.pool = newPools.overall;
+            } else {
+                gameState.detailedPool = data.detailedPool;
+                gameState.pool = data.pool;
+            }
+            if(data.inventory) gameState.inventory = data.inventory;
+            
+            // Backup synchronized state to local storage
+            try {
+                localStorage.setItem(SAVE_KEY, JSON.stringify(gameState));
+            } catch(e) {}
+            
+            updateUI();
+        }
+
+        function updateUI() {
+            const total = gameState.pool.C + gameState.pool.U + gameState.pool.R + gameState.pool.L;
+            
+            ['C', 'U', 'R', 'L'].forEach(r => {
+                const count = gameState.pool[r] || 0;
+                const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : "0.0";
+                
+                document.getElementById(`chance-${r}`).innerText = `${percentage}%`;
+                document.getElementById(`count-${r}`).innerText = `${count} left`;
+            });
+
+            const upgC = document.getElementById('upg-C');
+            const upgU = document.getElementById('upg-U');
+            const upgR = document.getElementById('upg-R');
+            
+            if(upgC) {
+                upgC.disabled = gameState.pool.U < 1;
+                upgC.innerText = gameState.pool.U < 1 ? 'Out of Stock' : 'Trade 3 Common';
+            }
+            if(upgU) {
+                upgU.disabled = gameState.pool.R < 1;
+                upgU.innerText = gameState.pool.R < 1 ? 'Out of Stock' : 'Trade 3 Uncommon';
+            }
+            if(upgR) {
+                upgR.disabled = gameState.pool.L < 1;
+                upgR.innerText = gameState.pool.L < 1 ? 'Out of Stock' : 'Trade 3 Rare';
+            }
+
+            document.getElementById('pool-total').innerText = `${total} / ${MAX_CARDS} Cards Remaining`;
+
+            const rollBtn = document.getElementById('roll-btn');
+            const actionText = document.getElementById('action-text');
+
+            if (total === 0) {
+                if (!isRolling && !isResultScreen) {
+                    rollBtn.disabled = true;
+                    rollBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                    actionText.innerText = "Lootbox is empty! Please reset the deck.";
+                }
+            } else {
+                if (!isRolling && !isResultScreen) {
+                    rollBtn.disabled = false;
+                    rollBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    actionText.innerText = "Click to open...";
+                }
+            }
+        }
+
+        // ==========================================
+        // ACTIONS (ROLL, TRADE, CLAIM, DECK)
+        // ==========================================
+
+        window.rollLootbox = async function() {
+            if (isRolling) return;
+            const totalRemaining = gameState.pool.C + gameState.pool.U + gameState.pool.R + gameState.pool.L;
+            if (totalRemaining <= 0) return;
+
+            isRolling = true;
+            isResultScreen = true;
+
+            const chest = document.getElementById('chest');
+            const btn = document.getElementById('roll-btn');
+            const actionText = document.getElementById('action-text');
+
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            actionText.innerText = "Opening...";
+            chest.classList.add('shake-animation');
+
+            let rand = Math.random() * totalRemaining;
+            let selectedRarity = 'C';
+            if (rand < gameState.pool.C) selectedRarity = 'C';
+            else if (rand < gameState.pool.C + gameState.pool.U) selectedRarity = 'U';
+            else if (rand < gameState.pool.C + gameState.pool.U + gameState.pool.R) selectedRarity = 'R';
+            else selectedRarity = 'L';
+
+            let availableIndexes = [];
+            gameState.detailedPool[selectedRarity].forEach((remainingCount, idx) => {
+                if (remainingCount > 0) availableIndexes.push(idx);
+            });
+            let pickedIndex = availableIndexes[Math.floor(Math.random() * availableIndexes.length)];
+            let chosenImage = raritiesConfig[selectedRarity].images[pickedIndex];
+
+            gameState.detailedPool[selectedRarity][pickedIndex]--;
+            gameState.pool[selectedRarity]--;
+            
+            window.saveGameState();
+
+            setTimeout(() => {
+                updateUI();
+                displayResult(raritiesConfig[selectedRarity], chosenImage);
+            }, 1200);
+        }
+
+        window.initiateTrade = function(fromRarity, toRarity) {
+            if (isRolling) return;
+            if (gameState.pool[toRarity] <= 0) return; 
+
+            currentTradeSource = fromRarity;
+            currentTradeTarget = toRarity;
+            
+            const numCards = raritiesConfig[fromRarity].images.length;
+            currentTradeSelection = new Array(numCards).fill(0);
+
+            document.getElementById('trade-modal-title').innerText = `Select 3 ${raritiesConfig[fromRarity].name} Cards to Return`;
+            window.renderTradeCards();
+            document.getElementById('trade-modal').classList.remove('hidden');
+        };
+
+        window.closeTradeModal = function() {
+            document.getElementById('trade-modal').classList.add('hidden');
+        };
+
+        window.modifyTradeSelection = function(idx, delta) {
+            const maxAllowed = raritiesConfig[currentTradeSource].maxPerType - gameState.detailedPool[currentTradeSource][idx];
+            const current = currentTradeSelection[idx];
+            let totalSelected = currentTradeSelection.reduce((a, b) => a + b, 0);
+            
+            if (delta > 0 && totalSelected >= 3) return; 
+            if (delta > 0 && current >= maxAllowed) return; // Prevent selecting more than what's missing
+            if (delta < 0 && current <= 0) return;
+
+            currentTradeSelection[idx] += delta;
+            window.renderTradeCards(); 
+        };
+
+        window.renderTradeCards = function() {
+            const contentDiv = document.getElementById('trade-list-content');
+            const rarityInfo = raritiesConfig[currentTradeSource];
+            let totalSelected = currentTradeSelection.reduce((a, b) => a + b, 0);
+            
+            let html = `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">`;
+
+            rarityInfo.images.forEach((imgUrl, idx) => {
+                const count = currentTradeSelection[idx];
+                const maxAllowed = rarityInfo.maxPerType - gameState.detailedPool[currentTradeSource][idx];
+                const directUrl = getDirectImageUrl(imgUrl);
+                const borderClass = count > 0 ? `border-${rarityInfo.colorClass.split('-')[1]}-500 shadow-lg shadow-${rarityInfo.colorClass.split('-')[1]}-500/50` : 'border-slate-600 shadow-md';
+                const opacityClass = maxAllowed === 0 ? 'opacity-40 grayscale' : 'opacity-100';
+                
+                html += `
+                    <div class="relative bg-slate-900 rounded-lg border-2 ${borderClass} overflow-hidden flex flex-col transition-all ${opacityClass}">
+                        <div class="absolute top-0 right-0 bg-slate-900/90 text-white font-bold text-xs px-2.5 py-1 rounded-bl-lg border-b border-l border-slate-600 shadow-md backdrop-blur-sm z-10">
+                            Missing: ${maxAllowed}
+                        </div>
+                        <div class="aspect-[160/220] relative">
+                            <img src="${directUrl}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/160x220/1e293b/ffffff?text=Image+Blocked'" />
+                        </div>
+                        <div class="p-3 flex justify-between items-center bg-slate-800 border-t border-slate-700">
+                            <button onclick="window.modifyTradeSelection(${idx}, -1)" class="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 text-white font-bold text-lg transition flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed" ${count === 0 ? 'disabled' : ''}>-</button>
+                            <span class="font-bold text-xl text-white ${count > 0 ? rarityInfo.colorClass : ''}">${count}</span>
+                            <button onclick="window.modifyTradeSelection(${idx}, 1)" class="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 text-white font-bold text-lg transition flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed" ${totalSelected >= 3 || count >= maxAllowed ? 'disabled' : ''}>+</button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `</div>`;
+            contentDiv.innerHTML = html;
+
+            document.getElementById('trade-count-value').innerText = totalSelected;
+            const confirmBtn = document.getElementById('confirm-trade-btn');
+            if (totalSelected === 3) {
+                confirmBtn.disabled = false;
+                document.getElementById('trade-count-value').classList.replace('text-blue-400', 'text-green-400');
+            } else {
+                confirmBtn.disabled = true;
+                document.getElementById('trade-count-value').classList.replace('text-green-400', 'text-blue-400');
+            }
+        };
+
+        window.executeTrade = async function() {
+            let totalSelected = currentTradeSelection.reduce((a, b) => a + b, 0);
+            if (totalSelected !== 3) return; 
+            
+            window.closeTradeModal();
+            isRolling = true;
+            isResultScreen = true;
+
+            const chest = document.getElementById('chest');
+            const btn = document.getElementById('roll-btn');
+            const actionText = document.getElementById('action-text');
+
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            actionText.innerText = "Executing Custom Trade...";
+            chest.classList.add('shake-animation');
+
+            let availableIndexes = [];
+            gameState.detailedPool[currentTradeTarget].forEach((remainingCount, idx) => {
+                if (remainingCount > 0) availableIndexes.push(idx);
+            });
+            let pickedIndex = availableIndexes[Math.floor(Math.random() * availableIndexes.length)];
+            let craftedImage = raritiesConfig[currentTradeTarget].images[pickedIndex];
+            
+            gameState.detailedPool[currentTradeTarget][pickedIndex]--;
+            gameState.pool[currentTradeTarget]--;
+
+            currentTradeSelection.forEach((countToAddBack, idx) => {
+                if(countToAddBack > 0) {
+                    gameState.detailedPool[currentTradeSource][idx] += countToAddBack;
+                    gameState.pool[currentTradeSource] += countToAddBack;
+                }
+            });
+
+            window.saveGameState();
+
+            setTimeout(() => {
+                updateUI();
+                displayResult(raritiesConfig[currentTradeTarget], craftedImage);
+            }, 800);
+        };
+
+        window.openClaimModal = function() {
+            ['C', 'U', 'R', 'L'].forEach(r => {
+                currentClaimSelection[r] = new Array(raritiesConfig[r].images.length).fill(0);
+            });
+            window.renderClaimCards();
+            document.getElementById('claim-modal').classList.remove('hidden');
+        };
+
+        window.closeClaimModal = function() {
+            document.getElementById('claim-modal').classList.add('hidden');
+        };
+
+        window.modifyClaimSelection = function(r, idx, delta) {
+            const maxAllowed = raritiesConfig[r].maxPerType - gameState.detailedPool[r][idx];
+            const current = currentClaimSelection[r][idx];
+            
+            if (delta > 0 && current >= maxAllowed) return; 
+            if (delta < 0 && current <= 0) return; 
+
+            currentClaimSelection[r][idx] += delta;
+            window.renderClaimCards();
+        };
+
+        window.renderClaimCards = function() {
+            const contentDiv = document.getElementById('claim-list-content');
+            let html = '';
+            let totalSelected = 0;
+
+            ['C', 'U', 'R', 'L'].forEach(r => {
+                const rarityInfo = raritiesConfig[r];
+                html += `<h3 class="text-xl font-bold mb-4 mt-6 first:mt-0 ${rarityInfo.colorClass} border-b border-slate-700/50 pb-2">${rarityInfo.name}</h3>`;
+                html += `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">`;
+
+                rarityInfo.images.forEach((imgUrl, idx) => {
+                    const count = currentClaimSelection[r][idx];
+                    totalSelected += count;
+                    const maxAllowed = rarityInfo.maxPerType - gameState.detailedPool[r][idx];
+                    const directUrl = getDirectImageUrl(imgUrl);
+                    const borderClass = count > 0 ? `border-emerald-500 shadow-lg shadow-emerald-500/50` : 'border-slate-600 shadow-md';
+                    const opacityClass = maxAllowed === 0 ? 'opacity-40 grayscale' : 'opacity-100';
+                    
+                    html += `
+                        <div class="relative bg-slate-900 rounded-lg border-2 ${borderClass} overflow-hidden flex flex-col transition-all ${opacityClass}">
+                            <div class="absolute top-0 right-0 bg-slate-900/90 text-white font-bold text-xs px-2.5 py-1 rounded-bl-lg border-b border-l border-slate-600 shadow-md backdrop-blur-sm z-10">
+                                Missing: ${maxAllowed}
+                            </div>
+                            <div class="aspect-[160/220] relative">
+                                <img src="${directUrl}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/160x220/1e293b/ffffff?text=Image+Blocked'" />
+                            </div>
+                            <div class="p-3 flex justify-between items-center bg-slate-800 border-t border-slate-700">
+                                <button onclick="window.modifyClaimSelection('${r}', ${idx}, -1)" class="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 text-white font-bold text-lg transition flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed" ${count === 0 ? 'disabled' : ''}>-</button>
+                                <span class="font-bold text-xl text-white ${count > 0 ? 'text-emerald-400' : ''}">${count}</span>
+                                <button onclick="window.modifyClaimSelection('${r}', ${idx}, 1)" class="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 text-white font-bold text-lg transition flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed" ${count >= maxAllowed ? 'disabled' : ''}>+</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+            });
+
+            contentDiv.innerHTML = html;
+            document.getElementById('claim-total-value').innerText = totalSelected;
+            document.getElementById('confirm-claim-btn').disabled = totalSelected === 0;
+        };
+
+        window.executeClaim = async function() {
+            let totalSelected = 0;
+            ['C', 'U', 'R', 'L'].forEach(r => {
+                currentClaimSelection[r].forEach((countToAdd, idx) => {
+                    if (countToAdd > 0) {
+                        gameState.detailedPool[r][idx] += countToAdd;
+                        gameState.pool[r] += countToAdd;
+                        totalSelected += countToAdd;
+                    }
+                });
+            });
+
+            if (totalSelected === 0) return; 
+            
+            window.closeClaimModal();
+            window.saveGameState();
+            updateUI();
+        };
+
+        function displayResult(rarity, imageUrl) {
+            const chestContainer = document.getElementById('chest-container');
+            const resultContainer = document.getElementById('result-container');
+            
+            const rarityTitle = document.getElementById('rarity-title');
+            const cardDisplay = document.getElementById('card-display');
+            const cardImage = document.getElementById('card-image');
+
+            chestContainer.classList.add('opacity-0');
+            setTimeout(() => {
+                chestContainer.classList.add('hidden');
+                resultContainer.classList.remove('hidden');
+                resultContainer.classList.add('flex');
+
+                rarityTitle.innerText = rarity.name;
+                rarityTitle.className = `text-2xl font-bold mb-6 tracking-wider ${rarity.colorClass}`;
+                
+                if(imageUrl) {
+                    cardImage.src = getDirectImageUrl(imageUrl);
+                    cardImage.classList.remove('hidden');
+                } else {
+                    cardImage.classList.add('hidden');
+                }
+                
+                cardDisplay.className = `bb-card card-reveal ${rarity.cardClass}`;
+                if(rarity.id === 'L') { cardDisplay.classList.add('legendary-glow'); }
+            }, 300);
+        }
+
+        window.resetLootbox = function() {
+            isResultScreen = false;
+            isRolling = false;
+
+            const chestContainer = document.getElementById('chest-container');
+            const resultContainer = document.getElementById('result-container');
+            const chest = document.getElementById('chest');
+            
+            resultContainer.classList.add('hidden');
+            resultContainer.classList.remove('flex');
+            
+            chestContainer.classList.remove('hidden', 'opacity-0');
+            chest.classList.remove('shake-animation');
+            
+            updateUI();
+        }
+
+        window.restockPool = async function() {
+            const newPools = buildInitialPool();
+            gameState.detailedPool = newPools.detailed;
+            gameState.pool = newPools.overall;
+            
+            window.saveGameState();
+            updateUI(); 
+        }
+
+        window.openDeckList = function() {
+            const contentDiv = document.getElementById('deck-list-content');
+            let html = '';
+
+            ['C', 'U', 'R', 'L'].forEach(r => {
+                const rarityInfo = raritiesConfig[r];
+                const poolCounts = gameState.detailedPool[r];
+                if (!poolCounts) return;
+
+                html += `
+                    <div>
+                        <h3 class="text-xl font-bold mb-4 ${rarityInfo.colorClass} border-b border-slate-700/50 pb-2 flex justify-between items-center">
+                            <span>${rarityInfo.name}</span>
+                            <span class="text-sm font-medium text-slate-400 bg-slate-900 px-2.5 py-1 rounded-md border border-slate-700">${gameState.pool[r]} Remaining</span>
+                        </h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                `;
+
+                rarityInfo.images.forEach((imgUrl, idx) => {
+                    const count = poolCounts[idx];
+                    const directUrl = getDirectImageUrl(imgUrl);
+                    const opacityClass = count === 0 ? 'opacity-40 grayscale' : 'opacity-100 hover:scale-105 transition-transform duration-200 cursor-default';
+                    
+                    html += `
+                        <div class="relative bg-slate-900 rounded-lg border-2 ${count === 0 ? 'border-slate-800' : 'border-slate-600 shadow-md'} overflow-hidden group aspect-[160/220] ${opacityClass}">
+                            <img src="${directUrl}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/160x220/1e293b/ffffff?text=Image+Blocked'" />
+                            <div class="absolute top-0 right-0 ${count === 0 ? 'bg-red-500/80 text-red-100' : 'bg-slate-900/90 text-white'} font-bold text-xs px-2.5 py-1 rounded-bl-lg border-b border-l border-slate-600 shadow-md backdrop-blur-sm z-10">
+                                ${count} Left
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `</div></div>`;
+            });
+
+            contentDiv.innerHTML = html;
+            document.getElementById('deck-list-modal').classList.remove('hidden');
+        }
+
+        window.closeDeckList = function() {
+            document.getElementById('deck-list-modal').classList.add('hidden');
+        }
+
+        // ==========================================
+        // FIREBASE CLOUD SETUP
+        // ==========================================
+        try {
+            if (firebaseConfig.projectId !== "bizboosters-local") {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+            }
+        } catch(e) {
+            console.error("Firebase init error", e);
+        }
+
+        async function setupFirestore() {
+            if (!userId || !db) return;
+            const fullDocRef = doc(db, 'artifacts', appId, 'users', userId, 'gameState', 'data');
+
+            try {
+                const docSnap = await getDoc(fullDocRef);
+                if (!docSnap.exists()) {
+                    await setDoc(fullDocRef, gameState);
+                    setCloudStatus(true, "☁️ Cloud Save Created");
+                } else {
+                    syncGameState(docSnap.data());
+                    setCloudStatus(true, "☁️ Cloud Save Loaded");
+                }
+
+                unsubscribeSnapshot = onSnapshot(fullDocRef, (snap) => {
+                    if (snap.exists()) {
+                        syncGameState(snap.data());
+                    }
+                }, (error) => {
+                    console.error("Snapshot error:", error);
+                });
+            } catch(e) {
+                console.error("Firestore setup error:", e);
+                setCloudStatus(false, "⚠️ Cloud Sync Failed (Using Local)");
+            }
+        }
+
+        window.saveGameState = async function() {
+            // 1. Save locally ALWAYS
+            try {
+                localStorage.setItem(SAVE_KEY, JSON.stringify(gameState));
+                setCloudStatus(true, "💾 Progress Saved Locally");
+            } catch(e) {
+                console.error("Local save error:", e);
+            }
+
+            // 2. Save to Cloud if connected
+            if (!userId || !db) {
+                return; // Only log cloud state if we're actually saving to it
+            }
+            const fullDocRef = doc(db, 'artifacts', appId, 'users', userId, 'gameState', 'data');
+            try {
+                await setDoc(fullDocRef, gameState);
+                setCloudStatus(true, "☁️ Progress Saved to Cloud");
+            } catch(e) {
+                console.error("Save error:", e);
+                setCloudStatus(false, "⚠️ Failed to Save to Cloud");
+            }
+        }
+
+        async function initApp() {
+            if (!auth) {
+                const loaded = loadLocalState();
+                if (!loaded) {
+                    setCloudStatus(false, "⚠️ Local Mode Only (No Cloud DB)");
+                    updateUI();
+                }
+                return;
+            }
+            try {
+                setCloudStatus(true, "☁️ Connecting to Cloud...");
+                
+                // Load local first for immediate UI feedback while cloud connects
+                loadLocalState();
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        setupFirestore();
+                    } else {
+                        userId = null;
+                        if (unsubscribeSnapshot) unsubscribeSnapshot();
+                    }
+                });
+            } catch (e) {
+                console.error("Auth error", e);
+                setCloudStatus(false, "⚠️ Cloud Auth Failed");
+                updateUI();
+            }
+        }
+
+        // Initialize App
+        initApp();
+    </script>
+</body>
+</html>
