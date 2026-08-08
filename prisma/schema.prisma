@@ -75,6 +75,8 @@ model User {
   enrollments       Enrollment[]
   tokenActions      TokenTransaction[]
   activityActed     ActivityEvent[]
+  notifications     Notification[]
+  acknowledgements  CardUseAcknowledgement[]
 
   @@index([schoolId, role])
   @@map("users")
@@ -204,8 +206,10 @@ model Room {
   activity    ActivityEvent[]
   roomCards   RoomCard[]
   rarities    RoomRarity[]
-  inventory   InventoryItem[]
-  draws       Draw[]
+  inventory       InventoryItem[]
+  draws           Draw[]
+  notifications   Notification[]
+  acknowledgements CardUseAcknowledgement[]
 
   @@index([schoolId, status])
   @@map("rooms")
@@ -246,6 +250,7 @@ model Enrollment {
   activity     ActivityEvent[]
   inventory    InventoryItem[]
   draws        Draw[]
+  trades       Trade[]
 
   @@unique([roomId, studentId])
   @@index([studentId, status])
@@ -299,9 +304,10 @@ model ActivityEvent {
   payload   Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
 
-  room     Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  actor    User?       @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
-  subject  Enrollment? @relation(fields: [subjectEnrollmentId], references: [id], onDelete: Cascade)
+  room          Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  actor         User?          @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  subject       Enrollment?    @relation(fields: [subjectEnrollmentId], references: [id], onDelete: Cascade)
+  notifications Notification[]
 
   @@index([roomId, createdAt])
   @@index([subjectEnrollmentId, createdAt])
@@ -466,8 +472,72 @@ model Draw {
   enrollment Enrollment      @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
   card       Card            @relation(fields: [resultCardId], references: [id])
   items      InventoryItem[]
+  trade      Trade?
 
   @@unique([enrollmentId, idempotencyKey])
   @@index([roomId, createdAt])
   @@map("draws")
+}
+
+// ─── Phase 4: use, trades, notifications ───────────────────────────────────
+
+/// Per-recipient delivery and read state. Stored as rows first and pushed
+/// second: SSE is best-effort, so a dropped connection must never lose a
+/// notification — the client reconciles from this table on reconnect.
+model Notification {
+  id              String  @id @default(uuid()) @db.Uuid
+  recipientUserId String  @map("recipient_user_id") @db.Uuid
+  roomId          String? @map("room_id") @db.Uuid
+  activityEventId String? @map("activity_event_id") @db.Uuid
+
+  type      String
+  payload   Json      @default("{}")
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  recipient User           @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+  room      Room?          @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  event     ActivityEvent? @relation(fields: [activityEventId], references: [id], onDelete: Cascade)
+
+  @@index([recipientUserId, createdAt])
+  @@index([recipientUserId, readAt])
+  @@map("notifications")
+}
+
+/// The educator's "I honoured this perk" tick-box.
+///
+/// Gates nothing — the card is already spent and already back in the deck. It
+/// exists because a teacher who gets six use notifications during one lesson
+/// needs to tell which ones they have actually acted on, and reading a
+/// notification is a different event from honouring a perk.
+model CardUseAcknowledgement {
+  inventoryItemId String   @id @map("inventory_item_id") @db.Uuid
+  roomId          String   @map("room_id") @db.Uuid
+  acknowledgedBy  String   @map("acknowledged_by") @db.Uuid
+  acknowledgedAt  DateTime @default(now()) @map("acknowledged_at")
+  note            String?
+
+  item Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [acknowledgedBy], references: [id], onDelete: Cascade)
+
+  @@index([roomId, acknowledgedAt])
+  @@map("card_use_acknowledgements")
+}
+
+/// The prototype's marketplace upgrade, recorded against the draw it produced.
+model Trade {
+  id            String     @id @default(uuid()) @db.Uuid
+  drawId        String     @unique @map("draw_id") @db.Uuid
+  enrollmentId  String     @map("enrollment_id") @db.Uuid
+  fromRarity    RarityCode @map("from_rarity")
+  toRarity      RarityCode @map("to_rarity")
+  /// The inventory items surrendered, so the trade is reconstructable.
+  consumedItems String[]   @map("consumed_items") @db.Uuid
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  draw       Draw       @relation(fields: [drawId], references: [id], onDelete: Cascade)
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@index([enrollmentId, createdAt])
+  @@map("trades")
 }

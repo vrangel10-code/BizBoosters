@@ -30,6 +30,9 @@ export type ErrorCode =
   | 'pool_empty'
   | 'item_not_owned'
   | 'item_state_conflict'
+  | 'trades_disabled'
+  | 'invalid_trade_selection'
+  | 'target_rarity_empty'
   | 'internal_error';
 
 const STATUS: Record<ErrorCode, number> = {
@@ -60,6 +63,9 @@ const STATUS: Record<ErrorCode, number> = {
   pool_empty: 409,
   item_not_owned: 404,
   item_state_conflict: 409,
+  trades_disabled: 409,
+  invalid_trade_selection: 422,
+  target_rarity_empty: 409,
   internal_error: 500,
 };
 

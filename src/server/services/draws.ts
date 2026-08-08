@@ -2,9 +2,10 @@ import { randomInt } from 'node:crypto';
 import type { Prisma, RarityCode, Room, User } from '@prisma/client';
 import { prisma } from '../db';
 import { apiError } from '../errors';
-import { recordActivity } from './activity';
 import { cardImageUrl } from './card-images';
-import { evaluateLowStock } from './decks';
+import { evaluateLowStock, getDeckOdds } from './decks';
+import { createNotifications, roomEducatorIds } from './notifications';
+import { publishAfterCommit } from '../events/bus';
 
 export interface DrawResult {
   drawId: string;
@@ -20,6 +21,7 @@ export interface DrawResult {
   tokenCost: number;
   /** True when an idempotency key replayed an earlier draw. */
   replayed: boolean;
+  educators?: string[];
 }
 
 interface StockRow {
@@ -105,6 +107,7 @@ export async function drawCard({
         tokenBalance: existing.enrollment.tokenBalance,
         tokenCost: existing.tokenCost,
         replayed: true,
+        educators: [] as string[],
       };
     }
 
@@ -217,8 +220,8 @@ export async function drawCard({
       },
     });
 
-    await recordActivity(
-      {
+    const event = await tx.activityEvent.create({
+      data: {
         roomId: room.id,
         type: 'card.drawn',
         actorUserId: actor.id,
@@ -232,6 +235,21 @@ export async function drawCard({
           token_cost: cost,
         },
       },
+    });
+
+    const educators = await roomEducatorIds(room.id, tx);
+    await createNotifications(
+      educators.map((userId) => ({
+        recipientUserId: userId,
+        roomId: room.id,
+        activityEventId: event.id,
+        type: 'card.drawn' as const,
+        payload: {
+          student_name: actor.displayName,
+          card_name: card.name,
+          rarity: card.rarity,
+        },
+      })),
       tx,
     );
 
@@ -248,11 +266,22 @@ export async function drawCard({
       tokenBalance: balanceAfter,
       tokenCost: cost,
       replayed: false,
+      educators,
     };
   });
 
-  // After commit, never inside: an alert for a rolled-back draw is a ghost.
+  // After commit, never inside: an announcement for a rolled-back draw is a
+  // ghost card in everyone's UI.
   if (!result.replayed) {
+    const odds = await getDeckOdds(room);
+    publishAfterCommit([
+      ...(result.educators ?? []).map((userId) => ({
+        kind: 'notification' as const,
+        userId,
+        data: { type: 'card.drawn', room_id: room.id, card_name: result.card.name },
+      })),
+      { kind: 'room.pool_changed' as const, roomId: room.id, data: { odds, cause: 'card.drawn' } },
+    ]);
     await evaluateLowStock(room.id).catch(() => undefined);
   }
 

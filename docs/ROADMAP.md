@@ -78,7 +78,7 @@ The acceptance run found a real production bug the unit tests could not: the
 per-IP login limit counted *every* attempt, so a class of 30 behind one school
 NAT locked out the 31st student. Login limits now count failures only.
 
-## Phase 4 — Use, trades, notifications (≈1.5 weeks)
+## Phase 4 — Use, trades, notifications ✅ complete
 - The item state machine and the use transaction: spend a card, return the copy
   to the deck, notify the educators. No approval gate.
 - Educator "Recent uses" list with acknowledgement tick-boxes.
@@ -91,7 +91,14 @@ NAT locked out the 31st student. Login limits now count failures only.
 
 **Done when:** a student uses a card, the educator's badge increments within a
 second, every other student's odds tick *up* in the same moment, and the
-conservation check still balances.
+conservation check still balances. ✅ Verified against a live server: a student
+holding the room's only Legendary spent it, the educator's badge went 0 → 1
+with "Aisha Tan used Fortune Teller", and another student's Legendary chance
+went **0.0% → 10.0%** in the same moment — then they actually drew it. Zero
+copy drift, zero balance drift. 243 tests green.
+
+SSE was confirmed end to end by holding an educator stream open while a student
+used a card: `notification` and `room.pool_changed` both arrived on the wire.
 
 ## Phase 5 — Logs, exports, polish, launch (≈1.5 weeks)
 - Educator room activity log with filters and CSV export.

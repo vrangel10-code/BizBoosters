@@ -4,7 +4,7 @@ import { readSessionCookie, resolveSession } from '@/server/auth/session';
 import { requireRoomEnrollment } from '@/server/auth/room-guard';
 import { getDeck, getDeckOdds } from '@/server/services/decks';
 import { ApiError } from '@/server/errors';
-import OddsPanel from '@/components/odds-panel';
+import LiveOddsPanel from '@/components/live-odds-panel';
 import DeckGrid from '@/components/deck-grid';
 
 export const dynamic = 'force-dynamic';
@@ -42,7 +42,7 @@ export default async function StudentDeckPage({
         <Link href={`/rooms/${roomId}/history`}>← Your tokens</Link>
       </div>
 
-      <OddsPanel odds={odds} audience="student" />
+      <LiveOddsPanel roomId={roomId} initialOdds={odds} audience="student" />
 
       {context.room.studentsSeeOdds ? (
         <div style={{ marginTop: '1.5rem' }}>

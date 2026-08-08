@@ -108,3 +108,19 @@ export const setDeckSchema = z.object({
 export const resetDeckSchema = z.object({
   confirm: z.string().min(1, 'Type the room name to confirm.'),
 });
+
+// ─── Phase 4 ────────────────────────────────────────────────────────────────
+
+export const useCardSchema = z.object({
+  note: z.string().trim().max(300).optional(),
+});
+
+export const tradeSchema = z.object({
+  item_ids: z.array(z.string().uuid()).min(2).max(20),
+  idempotency_key: z.string().uuid().optional(),
+});
+
+export const acknowledgeSchema = z.object({
+  room_id: z.string().uuid(),
+  note: z.string().trim().max(300).optional(),
+});

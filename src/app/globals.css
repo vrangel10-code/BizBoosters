@@ -396,3 +396,100 @@ select {
   .reveal-card,
   .reveal-card.legendary-glow { animation: none; }
 }
+
+/* ─── Phase 4: notifications, uses, trades ─────────────────────────────────── */
+
+.bell-wrap { position: relative; }
+.bell { position: relative; padding-right: 2.5rem; }
+.bell-badge {
+  position: absolute;
+  top: 50%;
+  right: 0.625rem;
+  transform: translateY(-50%);
+  min-width: 1.25rem;
+  padding: 0 0.3125rem;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+  text-align: center;
+}
+.bell-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 30;
+  width: min(22rem, 90vw);
+  padding: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.bell-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.75rem; }
+.bell-list { list-style: none; margin: 0; padding: 0; max-height: 18rem; overflow-y: auto; }
+.bell-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+.bell-list li:last-child { border-bottom: 0; }
+.bell-list li.unread { font-weight: 600; }
+.bell-list li.unread::before {
+  content: '';
+  width: 0.375rem;
+  height: 0.375rem;
+  margin-top: 0.4375rem;
+  border-radius: 999px;
+  background: var(--accent);
+  flex: none;
+}
+.bell-list time { color: var(--muted); font-size: 0.75rem; white-space: nowrap; }
+
+.deck-summary { display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.deck-summary div { font-size: 0.875rem; color: var(--muted); }
+.deck-summary strong { display: block; font-size: 1.5rem; color: var(--text); }
+
+tr.done { opacity: 0.55; }
+
+.trade-picks { display: flex; gap: 0.25rem; margin-top: 0.375rem; flex-wrap: wrap; }
+.trade-pick input { margin: 0; }
+.trade-bar {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+.trade-bar button { width: auto; }
+
+/* A number quietly changing reads as noise; the direction is the signal. */
+@keyframes pool-flash-up {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+  25%      { box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.45); }
+}
+@keyframes pool-flash-down {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(148, 163, 184, 0); }
+  25%      { box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.35); }
+}
+.pool-pulse { border-radius: 0.75rem; }
+.pool-pulse-up { animation: pool-flash-up 1.2s ease-out; }
+.pool-pulse-down { animation: pool-flash-down 1.2s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pool-pulse-up, .pool-pulse-down { animation: none; }
+}
+
+@media (max-width: 640px) {
+  .trade-bar { flex-direction: column; align-items: stretch; }
+  .trade-bar button { width: 100%; }
+  .deck-summary { gap: 1.25rem; }
+}

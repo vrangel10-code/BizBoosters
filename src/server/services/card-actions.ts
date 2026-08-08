@@ -1,0 +1,567 @@
+import { randomInt } from 'node:crypto';
+import type { Prisma, RarityCode, Room, User } from '@prisma/client';
+import { prisma } from '../db';
+import { apiError } from '../errors';
+import { cardImageUrl } from './card-images';
+import { evaluateLowStock, getDeckOdds } from './decks';
+import { createNotifications, roomEducatorIds } from './notifications';
+import { publishAfterCommit } from '../events/bus';
+import { pickCopy } from './draws';
+
+/** C → U → R → L. Legendary has nothing above it. */
+const RARITY_LADDER: Record<RarityCode, RarityCode | null> = {
+  C: 'U',
+  U: 'R',
+  R: 'L',
+  L: null,
+};
+
+interface CardSummary {
+  id: string;
+  name: string;
+  rarity: RarityCode;
+  effect_text: string | null;
+  image_url: string | null;
+}
+
+/**
+ * Returns one copy to the room's deck.
+ *
+ * Guarded by `copies_remaining < copies_total` so a double-return can never
+ * inflate the deck — the constraint would reject it anyway, but failing to
+ * increment is a cleaner outcome than aborting the transaction.
+ */
+async function returnCopyToDeck(
+  tx: Prisma.TransactionClient,
+  roomId: string,
+  cardId: string,
+): Promise<void> {
+  await tx.$executeRaw`
+    UPDATE room_cards
+       SET copies_remaining = copies_remaining + 1
+     WHERE room_id = ${roomId}::uuid AND card_id = ${cardId}::uuid
+       AND copies_remaining < copies_total
+  `;
+}
+
+export interface UseCardResult {
+  itemId: string;
+  card: CardSummary;
+}
+
+/**
+ * A student spends a card.
+ *
+ * No approval gate: the card is spent the moment they press the button and the
+ * educator is told afterwards. The copy goes straight back to the deck, so
+ * using a card visibly improves everyone else's odds — the most motivating
+ * moment in the game, and the reason `room.pool_changed` fires here too.
+ */
+export async function useCard(
+  actor: User,
+  room: Room,
+  enrollmentId: string,
+  itemId: string,
+  note?: string | null,
+): Promise<UseCardResult> {
+  if (room.status === 'archived') {
+    throw apiError('room_archived', 'This room has been archived.');
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    // Deck mutation: same room lock as the draw.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${room.id}, 0))`;
+
+    const item = await tx.inventoryItem.findUnique({
+      where: { id: itemId },
+      include: { card: true },
+    });
+
+    if (!item || item.enrollmentId !== enrollmentId || item.roomId !== room.id) {
+      throw apiError('item_not_owned', 'That card is not in your collection.');
+    }
+
+    // The state predicate is what makes a double-click safe: the second attempt
+    // matches zero rows and the copy is returned to the deck exactly once.
+    const claimed = await tx.inventoryItem.updateMany({
+      where: { id: itemId, state: 'owned' },
+      data: { state: 'used', usedAt: new Date(), returnedAt: new Date(), studentNote: note?.trim() || null },
+    });
+    if (claimed.count === 0) {
+      throw apiError('item_state_conflict', 'You have already used that card.');
+    }
+
+    await returnCopyToDeck(tx, room.id, item.cardId);
+
+    const event = await tx.activityEvent.create({
+      data: {
+        roomId: room.id,
+        type: 'card.used',
+        actorUserId: actor.id,
+        subjectEnrollmentId: enrollmentId,
+        payload: {
+          card_id: item.cardId,
+          card_name: item.card.name,
+          rarity: item.card.rarity,
+          item_id: itemId,
+          note: note?.trim() || null,
+        },
+      },
+    });
+
+    const educators = await roomEducatorIds(room.id, tx);
+    await createNotifications(
+      educators.map((userId) => ({
+        recipientUserId: userId,
+        roomId: room.id,
+        activityEventId: event.id,
+        type: 'card.used' as const,
+        payload: {
+          card_name: item.card.name,
+          rarity: item.card.rarity,
+          student_name: actor.displayName,
+          item_id: itemId,
+          note: note?.trim() || null,
+        },
+      })),
+      tx,
+    );
+
+    return {
+      itemId,
+      card: {
+        id: item.card.id,
+        name: item.card.name,
+        rarity: item.card.rarity,
+        effect_text: item.card.effectText,
+        image_url: cardImageUrl(item.card.imageKey),
+      },
+      educators,
+    };
+  });
+
+  const odds = await getDeckOdds(room);
+
+  publishAfterCommit([
+    ...result.educators.map((userId) => ({
+      kind: 'notification' as const,
+      userId,
+      data: {
+        type: 'card.used',
+        room_id: room.id,
+        card_name: result.card.name,
+        student_name: actor.displayName,
+      },
+    })),
+    // Everyone in the room sees the odds tick back up, which is the whole point
+    // of a circulating deck.
+    { kind: 'room.pool_changed' as const, roomId: room.id, data: { odds, cause: 'card.used' } },
+  ]);
+
+  await evaluateLowStock(room.id).catch(() => undefined);
+
+  return { itemId: result.itemId, card: result.card };
+}
+
+/** Give an unused copy back to the deck — the prototype's "Claim / Return". */
+export async function returnCard(
+  actor: User,
+  room: Room,
+  enrollmentId: string,
+  itemId: string,
+): Promise<{ itemId: string; card: CardSummary }> {
+  if (room.status === 'archived') {
+    throw apiError('room_archived', 'This room has been archived.');
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${room.id}, 0))`;
+
+    const item = await tx.inventoryItem.findUnique({
+      where: { id: itemId },
+      include: { card: true },
+    });
+    if (!item || item.enrollmentId !== enrollmentId || item.roomId !== room.id) {
+      throw apiError('item_not_owned', 'That card is not in your collection.');
+    }
+
+    const claimed = await tx.inventoryItem.updateMany({
+      where: { id: itemId, state: 'owned' },
+      data: { state: 'returned', returnedAt: new Date() },
+    });
+    if (claimed.count === 0) {
+      throw apiError('item_state_conflict', 'That card is no longer in your collection.');
+    }
+
+    await returnCopyToDeck(tx, room.id, item.cardId);
+
+    const event = await tx.activityEvent.create({
+      data: {
+        roomId: room.id,
+        type: 'card.returned',
+        actorUserId: actor.id,
+        subjectEnrollmentId: enrollmentId,
+        payload: { card_id: item.cardId, card_name: item.card.name, rarity: item.card.rarity },
+      },
+    });
+
+    const educators = await roomEducatorIds(room.id, tx);
+    await createNotifications(
+      educators.map((userId) => ({
+        recipientUserId: userId,
+        roomId: room.id,
+        activityEventId: event.id,
+        type: 'card.returned' as const,
+        payload: { card_name: item.card.name, student_name: actor.displayName },
+      })),
+      tx,
+    );
+
+    return {
+      itemId,
+      card: {
+        id: item.card.id,
+        name: item.card.name,
+        rarity: item.card.rarity,
+        effect_text: item.card.effectText,
+        image_url: cardImageUrl(item.card.imageKey),
+      },
+    };
+  });
+
+  const odds = await getDeckOdds(room);
+  publishAfterCommit([
+    { kind: 'room.pool_changed', roomId: room.id, data: { odds, cause: 'card.returned' } },
+  ]);
+
+  return result;
+}
+
+export interface TradeResult {
+  drawId: string;
+  card: CardSummary;
+  inventoryItemId: string;
+  consumed: string[];
+  replayed: boolean;
+}
+
+/**
+ * The prototype's marketplace upgrade: surrender `trade_ratio` copies of one
+ * rarity, get one of the next rarity up.
+ *
+ * The surrendered cards are specific items the student owns — the prototype
+ * inferred "what you hold" from gaps in the pool, which was a single-player
+ * fiction. Costs no tokens, matching the original.
+ */
+export async function tradeUp(
+  actor: User,
+  room: Room,
+  enrollmentId: string,
+  itemIds: string[],
+  idempotencyKey: string,
+): Promise<TradeResult> {
+  if (room.status === 'archived') {
+    throw apiError('room_archived', 'This room has been archived.');
+  }
+  if (!room.tradesEnabled) {
+    throw apiError('trades_disabled', 'Trading is switched off in this room.');
+  }
+  if (!idempotencyKey.trim()) {
+    throw apiError('validation_failed', 'An idempotency key is required.');
+  }
+  if (new Set(itemIds).size !== itemIds.length) {
+    throw apiError('invalid_trade_selection', 'The same card was selected twice.');
+  }
+  if (itemIds.length !== room.tradeRatio) {
+    throw apiError(
+      'invalid_trade_selection',
+      `Select exactly ${room.tradeRatio} cards of the same rarity.`,
+      { required: room.tradeRatio },
+    );
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${room.id}, 0))`;
+
+    const existing = await tx.draw.findUnique({
+      where: { enrollmentId_idempotencyKey: { enrollmentId, idempotencyKey } },
+      include: { card: true, items: true, trade: true },
+    });
+    if (existing) {
+      return {
+        drawId: existing.id,
+        card: {
+          id: existing.card.id,
+          name: existing.card.name,
+          rarity: existing.card.rarity,
+          effect_text: existing.card.effectText,
+          image_url: cardImageUrl(existing.card.imageKey),
+        },
+        inventoryItemId: existing.items[0]?.id ?? '',
+        consumed: existing.trade?.consumedItems ?? [],
+        replayed: true,
+        educators: [] as string[],
+      };
+    }
+
+    const items = await tx.inventoryItem.findMany({
+      where: { id: { in: itemIds }, enrollmentId, roomId: room.id, state: 'owned' },
+      include: { card: true },
+    });
+
+    if (items.length !== itemIds.length) {
+      throw apiError('invalid_trade_selection', 'Those cards are not all in your collection.');
+    }
+
+    const fromRarity = items[0]!.card.rarity;
+    if (!items.every((item) => item.card.rarity === fromRarity)) {
+      throw apiError('invalid_trade_selection', 'All the cards must be the same rarity.');
+    }
+
+    const toRarity = RARITY_LADDER[fromRarity];
+    if (!toRarity) {
+      throw apiError('invalid_trade_selection', 'Legendary cards cannot be traded up.');
+    }
+
+    // Check the target has stock BEFORE surrendering anything, so a failed
+    // trade never costs the student their three cards.
+    const stock = await tx.$queryRaw<{ id: string; card_id: string; copies_remaining: number }[]>`
+      SELECT rc.id, rc.card_id, rc.copies_remaining
+        FROM room_cards rc JOIN cards c ON c.id = rc.card_id
+       WHERE rc.room_id = ${room.id}::uuid AND c.rarity = ${toRarity}::"RarityCode"
+         AND rc.copies_remaining > 0
+       ORDER BY rc.id
+    `;
+    const poolSize = stock.reduce((sum, row) => sum + row.copies_remaining, 0);
+    if (poolSize === 0) {
+      throw apiError('target_rarity_empty', 'There are none of those left in the deck right now.', {
+        rarity: toRarity,
+      });
+    }
+
+    // Surrender the three copies back to the deck.
+    await tx.inventoryItem.updateMany({
+      where: { id: { in: itemIds } },
+      data: { state: 'returned', returnedAt: new Date() },
+    });
+    for (const item of items) {
+      await returnCopyToDeck(tx, room.id, item.cardId);
+    }
+
+    const roll = randomInt(poolSize);
+    const picked = pickCopy(stock, roll);
+
+    const consumed = await tx.$executeRaw`
+      UPDATE room_cards SET copies_remaining = copies_remaining - 1
+       WHERE id = ${picked.id}::uuid AND copies_remaining > 0
+    `;
+    if (consumed === 0) throw apiError('target_rarity_empty', 'That card was taken. Try again.');
+
+    const card = await tx.card.findUniqueOrThrow({ where: { id: picked.card_id } });
+
+    const snapshot = await tx.$queryRaw<{ rarity: RarityCode; n: number }[]>`
+      SELECT c.rarity, SUM(rc.copies_remaining)::int AS n
+        FROM room_cards rc JOIN cards c ON c.id = rc.card_id
+       WHERE rc.room_id = ${room.id}::uuid GROUP BY c.rarity
+    `;
+
+    const draw = await tx.draw.create({
+      data: {
+        roomId: room.id,
+        enrollmentId,
+        kind: 'trade_upgrade',
+        tokenCost: 0,
+        resultCardId: card.id,
+        resultRarity: card.rarity,
+        poolSnapshot: Object.fromEntries(
+          snapshot.map((row) => [row.rarity, row.n]),
+        ) as Prisma.InputJsonValue,
+        rollValue: roll,
+        poolSize,
+        idempotencyKey,
+      },
+    });
+
+    await tx.trade.create({
+      data: {
+        drawId: draw.id,
+        enrollmentId,
+        fromRarity,
+        toRarity,
+        consumedItems: itemIds,
+      },
+    });
+
+    const granted = await tx.inventoryItem.create({
+      data: {
+        enrollmentId,
+        roomId: room.id,
+        cardId: card.id,
+        state: 'owned',
+        acquiredVia: 'trade',
+        drawId: draw.id,
+      },
+    });
+
+    const event = await tx.activityEvent.create({
+      data: {
+        roomId: room.id,
+        type: 'card.traded',
+        actorUserId: actor.id,
+        subjectEnrollmentId: enrollmentId,
+        payload: {
+          from_rarity: fromRarity,
+          to_rarity: toRarity,
+          card_id: card.id,
+          card_name: card.name,
+          gave_up: items.map((item) => item.card.name),
+        },
+      },
+    });
+
+    const educators = await roomEducatorIds(room.id, tx);
+    await createNotifications(
+      educators.map((userId) => ({
+        recipientUserId: userId,
+        roomId: room.id,
+        activityEventId: event.id,
+        type: 'card.traded' as const,
+        payload: {
+          student_name: actor.displayName,
+          card_name: card.name,
+          from_rarity: fromRarity,
+          to_rarity: toRarity,
+        },
+      })),
+      tx,
+    );
+
+    return {
+      drawId: draw.id,
+      card: {
+        id: card.id,
+        name: card.name,
+        rarity: card.rarity,
+        effect_text: card.effectText,
+        image_url: cardImageUrl(card.imageKey),
+      },
+      inventoryItemId: granted.id,
+      consumed: itemIds,
+      replayed: false,
+      educators,
+    };
+  });
+
+  if (!result.replayed) {
+    const odds = await getDeckOdds(room);
+    publishAfterCommit([
+      ...result.educators.map((userId) => ({
+        kind: 'notification' as const,
+        userId,
+        data: { type: 'card.traded', room_id: room.id, card_name: result.card.name },
+      })),
+      { kind: 'room.pool_changed' as const, roomId: room.id, data: { odds, cause: 'card.traded' } },
+    ]);
+    await evaluateLowStock(room.id).catch(() => undefined);
+  }
+
+  return {
+    drawId: result.drawId,
+    card: result.card,
+    inventoryItemId: result.inventoryItemId,
+    consumed: result.consumed,
+    replayed: result.replayed,
+  };
+}
+
+// ─── Educator: recent uses and acknowledgement ───────────────────────────────
+
+export interface RecentUse {
+  item_id: string;
+  card_name: string;
+  rarity: RarityCode;
+  student_name: string;
+  enrollment_id: string;
+  used_at: string;
+  note: string | null;
+  acknowledged: boolean;
+}
+
+export async function listRecentUses(
+  roomId: string,
+  options: { unacknowledgedOnly?: boolean; limit?: number } = {},
+): Promise<RecentUse[]> {
+  const items = await prisma.inventoryItem.findMany({
+    where: { roomId, state: 'used' },
+    orderBy: { usedAt: 'desc' },
+    take: Math.min(options.limit ?? 50, 200),
+    include: {
+      card: { select: { name: true, rarity: true } },
+      enrollment: { include: { student: { select: { displayName: true } } } },
+    },
+  });
+
+  const acks = await prisma.cardUseAcknowledgement.findMany({
+    where: { inventoryItemId: { in: items.map((item) => item.id) } },
+    select: { inventoryItemId: true },
+  });
+  const acknowledged = new Set(acks.map((ack) => ack.inventoryItemId));
+
+  const rows = items.map((item) => ({
+    item_id: item.id,
+    card_name: item.card.name,
+    rarity: item.card.rarity,
+    student_name: item.enrollment.student.displayName,
+    enrollment_id: item.enrollmentId,
+    used_at: item.usedAt?.toISOString() ?? item.acquiredAt.toISOString(),
+    note: item.studentNote,
+    acknowledged: acknowledged.has(item.id),
+  }));
+
+  return options.unacknowledgedOnly ? rows.filter((row) => !row.acknowledged) : rows;
+}
+
+/**
+ * Ticks off a use. Gates nothing — the card is already spent and back in the
+ * deck — but it is how a teacher tracks which perks they still owe.
+ */
+export async function acknowledgeUse(
+  actor: User,
+  roomId: string,
+  itemId: string,
+  note?: string | null,
+): Promise<void> {
+  const item = await prisma.inventoryItem.findUnique({ where: { id: itemId } });
+  if (!item || item.roomId !== roomId || item.state !== 'used') {
+    throw apiError('not_found', 'Not found.');
+  }
+
+  await prisma.cardUseAcknowledgement.upsert({
+    where: { inventoryItemId: itemId },
+    create: { inventoryItemId: itemId, roomId, acknowledgedBy: actor.id, note: note?.trim() || null },
+    update: { acknowledgedBy: actor.id, acknowledgedAt: new Date(), note: note?.trim() || null },
+  });
+}
+
+/** The diagnostic for an empty circulating deck: who is holding what. */
+export async function heldByStudent(roomId: string) {
+  const rows = await prisma.inventoryItem.groupBy({
+    by: ['enrollmentId'],
+    where: { roomId, state: 'owned' },
+    _count: true,
+  });
+
+  const enrollments = await prisma.enrollment.findMany({
+    where: { id: { in: rows.map((row) => row.enrollmentId) } },
+    include: { student: { select: { displayName: true } } },
+  });
+  const nameFor = new Map(enrollments.map((e) => [e.id, e.student.displayName]));
+
+  return rows
+    .map((row) => ({
+      enrollment_id: row.enrollmentId,
+      student_name: nameFor.get(row.enrollmentId) ?? 'Unknown',
+      held: row._count,
+    }))
+    .sort((a, b) => b.held - a.held);
+}

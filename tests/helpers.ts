@@ -9,6 +9,7 @@ export const prisma = new PrismaClient();
 export async function resetDatabase(): Promise<void> {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      notifications, card_use_acknowledgements, trades,
       inventory_items, draws, activity_events, token_transactions, enrollments,
       room_cards, room_rarities,
       cards, room_educators, rooms,

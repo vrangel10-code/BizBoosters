@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiRequestError } from '@/components/api';
-import OddsPanel, { type OddsView } from '@/components/odds-panel';
+import { type OddsView } from '@/components/odds-panel';
+import LiveOddsPanel from '@/components/live-odds-panel';
 
 interface DrawResponse {
   draw: { id: string; replayed: boolean };
@@ -204,7 +205,7 @@ export default function DrawMachine({
       </div>
 
       <div style={{ marginTop: '1.5rem' }}>
-        <OddsPanel odds={odds} audience="student" />
+        <LiveOddsPanel roomId={roomId} initialOdds={odds} audience="student" />
       </div>
     </>
   );

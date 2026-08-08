@@ -20,7 +20,10 @@ export type ActivityType =
   | 'pool.empty'
   | 'pool.reset'
   | 'card.drawn'
-  | 'card.returned';
+  | 'card.returned'
+  | 'card.used'
+  | 'card.traded'
+  | 'card.use_acknowledged';
 
 export interface ActivityInput {
   roomId: string;

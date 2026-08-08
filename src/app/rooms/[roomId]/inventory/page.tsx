@@ -4,15 +4,9 @@ import { readSessionCookie, resolveSession } from '@/server/auth/session';
 import { requireRoomEnrollment } from '@/server/auth/room-guard';
 import { listInventory } from '@/server/services/draws';
 import { ApiError } from '@/server/errors';
+import InventoryActions from '@/components/inventory-actions';
 
 export const dynamic = 'force-dynamic';
-
-const RARITY_LABEL: Record<string, string> = {
-  C: 'Common',
-  U: 'Uncommon',
-  R: 'Rare',
-  L: 'Legendary',
-};
 
 export default async function InventoryPage({
   params,
@@ -58,31 +52,18 @@ export default async function InventoryPage({
             {context.enrollment.tokenBalance}.
           </p>
         ) : (
-          <ul className="deck-grid">
-            {stacks.map((stack) => (
-              <li key={stack.card_id} className="deck-card">
-                <div className={`bb-card card-${stack.rarity}`}>
-                  {stack.image_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={stack.image_url} alt="" loading="lazy" />
-                  ) : (
-                    <span className="bb-card-initial" aria-hidden="true">
-                      {stack.name.slice(0, 1)}
-                    </span>
-                  )}
-                  {stack.count > 1 ? <span className="deck-badge">×{stack.count}</span> : null}
-                </div>
-                <p className="deck-card-name">{stack.name}</p>
-                <p className="deck-card-meta">{RARITY_LABEL[stack.rarity]}</p>
-              </li>
-            ))}
-          </ul>
+          <InventoryActions
+            roomId={roomId}
+            stacks={stacks}
+            tradesEnabled={context.room.tradesEnabled}
+            tradeRatio={context.room.tradeRatio}
+          />
         )}
       </div>
 
       <p className="hint" style={{ marginTop: '1rem' }}>
-        Using a card comes in the next update. When you use one it goes back into the deck for
-        everyone.
+        When you use a card it goes straight back into the deck, so everyone else&apos;s chances go
+        up. Your teacher is told which card you used.
       </p>
     </main>
   );

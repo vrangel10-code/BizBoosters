@@ -163,6 +163,19 @@ POST /api/v1/students/:id/reset-password
 immediately and everywhere. A password change revokes every session except the
 one performing it; a password reset revokes all of them.
 
+**Realtime.** `GET /api/v1/stream` is server-sent events, scoped to the
+session. It is an optimisation, not a guarantee: notifications are database
+rows, and clients poll `/notifications` every 20s after two failed reconnects.
+The pub/sub behind it is in-process, so on more than one instance a push only
+reaches clients on the emitting instance — the cost is a slower badge, never a
+lost notification. Swap `publish`/`subscribe` in `src/server/events/bus.ts` for
+Postgres LISTEN/NOTIFY when a second instance appears.
+
+Note that long-lived SSE connections do not work on most serverless platforms.
+On Vercel the stream will disconnect and clients will fall back to polling,
+which is correct but slower; a long-running container (Railway, Fly, a VM) gets
+the live behaviour.
+
 **Nightly reconciliation.** `GET /api/v1/cron/reconcile` runs both integrity
 checks — card-copy conservation and token-balance-vs-ledger — and returns 500
 when either drifts. Point a scheduler at it and alert on a non-200:
