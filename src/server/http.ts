@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { ApiError } from './errors';
+import { newRequestId, reportError } from './observability';
 
 export const json = <T>(data: T, init?: ResponseInit) => NextResponse.json(data, init);
 
@@ -44,10 +45,12 @@ export function handle<Args extends unknown[]>(
         );
       }
 
-      console.error('[unhandled]', error);
+      // Everything unexpected funnels through one reporter, and the user only
+      // ever sees the id. Error messages leak table names and file paths.
+      const errorId = reportError(error, { request_id: newRequestId() });
       return NextResponse.json(
-        errorBody('internal_error', 'Something went wrong.', {}),
-        { status: 500 },
+        errorBody('internal_error', 'Something went wrong.', { error_id: errorId }),
+        { status: 500, headers: { 'x-error-id': errorId } },
       );
     }
   };

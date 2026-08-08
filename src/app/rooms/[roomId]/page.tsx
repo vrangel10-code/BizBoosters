@@ -52,11 +52,18 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
         </div>
         <nav className="page-nav">
           <NotificationBell initialUnread={unread} />
+          <Link href={`/rooms/${roomId}/activity`}>Activity log</Link>
           <Link href={`/rooms/${roomId}/deck`}>Deck</Link>
           <Link href="/cards">Card catalog</Link>
           <Link href="/dashboard">← All rooms</Link>
         </nav>
       </div>
+
+      <p className="hint" style={{ marginTop: '-0.5rem' }}>
+        <a href={`/api/v1/rooms/${roomId}/roster/export`} download>
+          Download student summary (CSV)
+        </a>
+      </p>
 
       <div className="panel deck-summary">
         <div>

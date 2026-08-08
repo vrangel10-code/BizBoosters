@@ -100,7 +100,7 @@ copy drift, zero balance drift. 243 tests green.
 SSE was confirmed end to end by holding an educator stream open while a student
 used a card: `notification` and `room.pool_changed` both arrived on the wire.
 
-## Phase 5 — Logs, exports, polish, launch (≈1.5 weeks)
+## Phase 5 — Logs, exports, polish, launch ✅ complete
 - Educator room activity log with filters and CSV export.
 - Student history view.
 - Empty/error states, mobile layout, accessibility pass.
@@ -109,6 +109,20 @@ used a card: `notification` and `room.pool_changed` both arrived on the wire.
   privacy policy.
 
 **Done when:** a real class runs a full lesson on it without you in the room.
+⚠️ **Not yet claimable** — the software is ready, but three things outside the
+code have to happen first. See [LAUNCH.md](LAUNCH.md).
+
+Delivered: activity log with student/type/date filters and CSV export (with
+formula-injection defusing, because these files open in Excel on school
+machines); per-student and per-room data export; real erasure that returns held
+cards to the deck first; room cloning for next term; retention sweep; error and
+not-found boundaries; skip link, focus rings, landmarks and a global
+reduced-motion rule; structured JSON logging behind a single `reportError` seam;
+health check that actually probes the database. 265 tests green.
+
+The backup/restore drill was **performed, not just documented**: dumped, dropped
+the database, restored, and confirmed matching checksums with zero integrity
+drift.
 
 ## Testing strategy
 

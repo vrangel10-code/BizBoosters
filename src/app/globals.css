@@ -493,3 +493,85 @@ tr.done { opacity: 0.55; }
   .trade-bar button { width: 100%; }
   .deck-summary { gap: 1.25rem; }
 }
+
+/* ─── Phase 5: accessibility and polish ────────────────────────────────────── */
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.75rem 1rem;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 0 0 0.5rem 0;
+  font-weight: 600;
+}
+.skip-link:focus { left: 0; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* A focus ring that survives a dark background and never disappears entirely —
+   :focus-visible alone leaves mouse users with no indication after a click. */
+:focus-visible {
+  outline: 3px solid #c4b5fd;
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+.filter-bar {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.filter-bar > div { flex: 1 1 10rem; }
+.filter-bar select,
+.filter-bar input { margin-bottom: 0; }
+.filter-actions { display: flex; gap: 0.75rem; align-items: center; flex: 0 0 auto; }
+.filter-actions button { width: auto; }
+
+.button-link {
+  display: inline-block;
+  padding: 0.625rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.button-link:hover { border-color: var(--accent); }
+
+td.nowrap, th.nowrap { white-space: nowrap; }
+
+/* Tables are the one thing that genuinely cannot reflow on a phone. */
+.panel table { display: block; overflow-x: auto; }
+
+@media (max-width: 640px) {
+  main.shell { padding: 1.5rem 1rem; }
+  .filter-bar { flex-direction: column; align-items: stretch; }
+  .filter-actions { flex-direction: column; align-items: stretch; }
+  .filter-actions .button-link { text-align: center; }
+}
+
+/* Honour the OS setting everywhere, not just where it was remembered. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

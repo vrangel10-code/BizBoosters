@@ -22,7 +22,12 @@ export type AuditAction =
   | 'auth.password_changed'
   | 'auth.logged_out'
   | 'student.created'
-  | 'student.password_reset';
+  | 'student.password_reset'
+  | 'student.deleted'
+  | 'student.sessions_revoked'
+  | 'room.deleted'
+  | 'room.cloned'
+  | 'data.exported';
 
 export interface AuditEntry {
   action: AuditAction;

@@ -4,9 +4,13 @@ A classroom trading-card / token-economy platform. Educators award tokens for
 classroom achievement; students spend tokens to draw cards from a shared,
 finite room deck; cards are redeemed for real-world classroom perks.
 
-**Status: phase 0 complete** — identity, sessions, invitations and the
-first-login flow are built and tested. Rooms, tokens, decks and the draw arrive
-in phases 1–3. See [docs/ROADMAP.md](docs/ROADMAP.md).
+**Status: all five build phases complete** — identity, rooms, tokens, decks,
+the draw, card use, trades, live notifications, exports and retention. 265 tests
+against a real Postgres.
+
+Three things still stand between this and a real class: the legal documents need
+a lawyer, the card art needs importing, and the restore drill needs running
+against your production database. See **[docs/LAUNCH.md](docs/LAUNCH.md)**.
 
 ## Quick start
 
@@ -31,21 +35,35 @@ in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 | [docs/API.md](docs/API.md) | REST surface, realtime events, error contracts |
 | [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md) | Every design decision made, with its reasoning |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Phased build plan |
-| [docs/RUNBOOK.md](docs/RUNBOOK.md) | Setup, migrations, first admin, operational tasks |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | Setup, migrations, first admin, backups, retention |
+| [docs/LAUNCH.md](docs/LAUNCH.md) | What is left before a real class uses it, and known gaps |
+| [docs/legal/](docs/legal/) | Privacy notice and terms — **drafts, need legal review** |
 
-## What is built (phase 0)
+## What is built
 
-- **Sessions** — opaque tokens, only their SHA-256 hash stored, server-side
-  revocation, sliding expiry: 2 hours for students, 12 for educators.
-- **Educator invitations** — single-use, 7-day, revocable, token rotated on
-  resend. No signup route exists for any role.
-- **Student accounts** — generated login IDs and one-time default passwords,
-  shown to the educator once, with a first-login password change enforced in
-  `requireAuth()` rather than in the UI.
-- **Argon2id** password hashing at the OWASP baseline, per-account lockout and
-  Postgres-backed rate limiting.
-- **67 tests** against a real Postgres, including the concurrency case where one
-  invitation link is submitted five times at once.
+**Accounts** — educators by admin invitation only (no signup route exists);
+students by roster creation with generated login IDs and one-time passwords.
+Argon2id, server-side sessions, forced first-login password change enforced in
+the guard rather than the UI.
+
+**Rooms and tokens** — per-enrolment balances, CSV roster import, bulk awards,
+adjust and undo. The balance is a cache; an append-only ledger is the truth, and
+they move together in one locked transaction.
+
+**Cards and decks** — school-wide catalog, per-room decks edited by *total*
+copies, live odds identical for both roles, Reset Deck, low-stock alerting.
+
+**The draw** — one transaction under a per-room advisory lock, idempotency keys,
+server-side CSPRNG, stored roll and pool snapshot so a disputed draw is
+answerable. Verified with 30 students against a 5-card deck.
+
+**Use and trades** — spending a card returns the copy to the deck immediately,
+so everyone's odds tick up; 3-for-1 trades against real inventory; live
+notifications over SSE with a polling fallback.
+
+**Operations** — CSV and JSON exports, real erasure, room cloning, retention
+sweep, nightly integrity reconciliation, structured logging, verified
+backup/restore drill.
 
 ## What the prototype does today
 

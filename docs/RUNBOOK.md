@@ -136,6 +136,88 @@ behaviour only a real database exhibits — row locks, constraint violations,
 concurrent decrements — so the harness is in place before the code that needs
 it.
 
+## Backups and restore
+
+**Take backups with `pg_dump` in custom format** and keep them somewhere other
+than the database host:
+
+```bash
+pg_dump "$DATABASE_URL" -Fc -f "bizboosters-$(date +%F).dump"
+```
+
+Managed providers (Neon, Supabase, RDS) also take their own automated backups —
+use them, but keep an independent dump as well. A provider account problem takes
+the provider's backups with it.
+
+### Restore
+
+```bash
+createdb bizboosters_restored
+pg_restore -d bizboosters_restored bizboosters-2026-08-08.dump
+```
+
+### The drill — run it before you go live
+
+An untested backup is not a backup. This exact sequence has been run against
+this schema and verified:
+
+```bash
+# 1. Record a checksum of something that must survive
+psql "$DATABASE_URL" -tAc "SELECT md5(string_agg(t::text,'|' ORDER BY t::text))
+  FROM (SELECT id, token_balance FROM enrollments) t"
+
+# 2. Back up
+pg_dump "$DATABASE_URL" -Fc -f drill.dump
+
+# 3. Restore into a scratch database and compare the checksum
+createdb bizboosters_drill
+pg_restore -d bizboosters_drill drill.dump
+psql bizboosters_drill -tAc "SELECT md5(string_agg(t::text,'|' ORDER BY t::text))
+  FROM (SELECT id, token_balance FROM enrollments) t"
+
+# 4. Confirm integrity survived
+psql bizboosters_drill -tAc "SELECT count(*) FROM room_cards rc
+  LEFT JOIN LATERAL (SELECT count(*) n FROM inventory_items i
+    WHERE i.room_id=rc.room_id AND i.card_id=rc.card_id AND i.state='owned') h ON true
+  WHERE rc.copies_remaining + COALESCE(h.n,0) <> rc.copies_total"   # must be 0
+```
+
+Checksums must match and the drift count must be zero. Losing a term of student
+collections is unrecoverable in a way that matters to real children — do the
+drill.
+
+## Retention, exports and erasure
+
+**Exports** (educator, self-service — no request to you needed):
+
+| What | Where |
+| --- | --- |
+| Room activity, filtered, as CSV | Activity log → Download CSV |
+| Per-student summary as CSV | Room page → Download student summary |
+| Everything about one student, as JSON | `GET /api/v1/students/:id/export` |
+
+The student export is what answers a subject-access request or a parent asking
+what the school stores. It is deliberately complete: a partial export is worse
+than none, because it implies a completeness it does not have.
+
+**Erasure** really deletes — rows are removed, not flagged. Both paths require
+typing the exact name to confirm:
+
+- `POST /api/v1/students/:id/delete` — one student and all their history. Held
+  cards are returned to their rooms' decks first, so erasing a student never
+  leaves a deck permanently short.
+- `POST /api/v1/rooms/:roomId/delete` — an archived room. Student *accounts*
+  survive; they may be in other rooms.
+
+A deleted student may still exist in backups until those age out. Say so when
+answering an erasure request.
+
+**Nightly retention sweep** at `/api/v1/cron/retention` (same `CRON_SECRET`)
+prunes expired sessions and rate-limit windows automatically, and *reports*
+archived rooms past `RETENTION_DAYS` (default 548). Expired rooms are never
+deleted automatically — a job that silently erases a term of student work is not
+something to run unattended.
+
 ## Migrations
 
 ```bash
@@ -212,7 +294,8 @@ sliding on activity. Student devices are shared; there is deliberately no
 | `SESSION_COOKIE_NAME` | no | Defaults to `bb_session`. |
 | `MAIL_TRANSPORT` | no | `console` (default) or `smtp`. |
 | `SMTP_*` | when `MAIL_TRANSPORT=smtp` | Host, port, credentials, from address. |
-| `CRON_SECRET` | for the nightly check | Bearer token for `/api/v1/cron/reconcile`. Unset disables the route. |
+| `CRON_SECRET` | for the nightly jobs | Bearer token for `/api/v1/cron/*`. Unset disables those routes. |
+| `RETENTION_DAYS` | no | Archived-room review window. Default 548 (18 months). |
 | `STORAGE_DIR` / `S3_*` | card art | See "Where card art is stored". |
 
 Secrets come from the environment only. Nothing sensitive belongs in the repo.
