@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.github
+storage
+coverage
+tests
+docs
+prototype
+seed/images
+*.md
+.env
+.env.*
+!.env.example
+Dockerfile
+.dockerignore

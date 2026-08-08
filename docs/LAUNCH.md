@@ -25,6 +25,11 @@ The drill in the runbook has been performed against this schema, but not against
 your hosting. An untested backup is not a backup, and losing a term of student
 collections is unrecoverable.
 
+## Deployment
+
+Step-by-step instructions are in [DEPLOY.md](DEPLOY.md). The decisions below are
+the ones that change behaviour.
+
 ## Deployment decisions you have to make
 
 **Pick a host that supports long-lived connections.** SSE is how the educator's

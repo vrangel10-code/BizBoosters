@@ -12,7 +12,12 @@ Three things still stand between this and a real class: the legal documents need
 a lawyer, the card art needs importing, and the restore drill needs running
 against your production database. See **[docs/LAUNCH.md](docs/LAUNCH.md)**.
 
-## Quick start
+BizBoosters is a **hosted web app**, not an offline one: students open a URL,
+sign in with the ID their teacher gave them, and play. The shared deck only
+works because state lives on a server. See [docs/DEPLOY.md](docs/DEPLOY.md) to
+put it on a public URL.
+
+## Quick start (local)
 
 ```bash
 cp .env.example .env
@@ -36,6 +41,7 @@ in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 | [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md) | Every design decision made, with its reasoning |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Phased build plan |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Setup, migrations, first admin, backups, retention |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Getting it onto a public URL students can reach |
 | [docs/LAUNCH.md](docs/LAUNCH.md) | What is left before a real class uses it, and known gaps |
 | [docs/legal/](docs/legal/) | Privacy notice and terms — **drafts, need legal review** |
 
