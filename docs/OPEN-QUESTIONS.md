@@ -19,18 +19,22 @@ Total copies are constant unless an educator adds or removes some. This has the
 widest blast radius of any decision so far — see
 [MECHANICS.md §3.1](MECHANICS.md). The two things it changes that are easy to
 miss:
-- **"Refill the deck to max" must not exist.** With copies out in hands, a
-  refill mints cards from nothing and silently breaks conservation forever. The
-  prototype's "Reset Deck" splits into *add copies* and *recall all*.
+- **Refilling the deck is only safe when paired with clearing every hand.** On
+  its own it mints cards from nothing. Done together in one transaction — which
+  is exactly what Reset Deck is (Q13) — it lands back on `held = 0`,
+  `remaining = total` and stays consistent.
 - **An empty deck now means hoarding, not exhaustion.** The educator UI has to
   show "N of M copies held by students" or the empty state looks like a bug.
 
-**Q3. What is on a card?**
-The prototype's cards are bare images with no names. Without a name and effect
-text, the activity log reads "student used a card" and inventory is an
-unlabelled gallery.
-→ *Cards need `name`, `description`, `effect_text`. Non-negotiable if you want a
-usable log.*
+**Q3. What is on a card? — DECIDED: a name, and that is the required part.**
+Every card carries its power-up name, which is what the activity log,
+notifications, inventory and exports display. `effect_text` is **optional**: the
+card art states the effect and educators know it from the name. Names are
+editable at any time from the educator card page; past activity events keep the
+name they recorded, so a rename never rewrites history.
+→ *`seed/prototype-deck.json` pairs all 20 prototype images with an empty `name`
+field to fill in. Naming them is a prerequisite for a usable log, not a
+nice-to-have.*
 
 **Q4. Keep the 3-for-1 trade?**
 It is a good mechanic but it is a guaranteed path to a Legendary (27 Commons)
@@ -70,22 +74,35 @@ duplicates.
 → *Default: no pity rule; make the live odds panel prominent so the maths is
 visible. Revisit after one term of real use.*
 
-**Q11. Should held cards expire? (raised by Q2)**
-Now that the deck circulates, the only way it runs dry is students hoarding. A
-class that collects and never spends starves itself, and the effect compounds at
-the rare end — one student sitting on the only Legendary blocks twenty-nine
-others indefinitely.
-→ *Ship without expiry. Instrument it: put "copies held" on the room dashboard
-and watch one term. Expiry is a punitive mechanic and it is much easier to add
-once you can see whether hoarding actually happens.*
-Options if it does: a soft nudge notification after N days, a per-student hold
-cap, or an end-of-week auto-return. A cap is the gentlest — it limits hoarding
-without ever taking something away.
+**Q11. Should held cards expire? — DECIDED: no.**
+Cards are held indefinitely. Hoarding self-corrects at the semester boundary,
+when the educator resets the deck. The "copies held" metric stays on the room
+dashboard as the diagnostic for a thin deck, and the low-stock alert (Q14) is
+the mid-term relief valve — the educator adds copies rather than the system
+taking cards away.
 
-**Q12. Can a student use a card they just drew, in the same lesson? (raised by Q2)**
-Nothing stops it, and the copy immediately re-enters the deck.
-→ *Allow it. If drawing and instantly spending turns out to be a token-laundering
-pattern you dislike, a per-room cooldown is a small addition later.*
+**Q12. Can a student use a card they just drew? — DECIDED: yes, no cooldown.**
+Draw and immediately spend is allowed. The copy re-enters the deck at once.
+
+**Q13. Who can reset the deck? — DECIDED: educators only.**
+Reset Deck wipes every student inventory in the room and refills the deck to
+full, in one transaction. Educator-only, enforced server-side, typed
+confirmation, all students notified. It is the semester-boundary tool and the
+only action that destroys student collections. See
+[MECHANICS.md §5a](MECHANICS.md).
+
+**Q14. What happens when the deck runs low? — DECIDED: alert at 20, educator adds copies.**
+The system never restocks itself. At **20 copies left in the deck** the room's
+educators get a `pool.low` notification and a persistent banner; they choose
+whether to add copies. Edge-triggered with hysteresis, because a circulating
+deck crosses the threshold repeatedly. See [MECHANICS.md §5b](MECHANICS.md).
+
+**Q15. Does Reset Deck also clear token balances? — open, low stakes.**
+Not asked, and the two are separable: a semester reset of the *cards* does not
+obviously imply wiping what students earned.
+→ *Default: tokens survive a deck reset. The confirm dialog offers "also reset
+token balances" as an unchecked box; ticking it writes a proper ledger
+adjustment per student rather than nulling the balance.*
 
 ## B. Things the brief does not mention
 

@@ -38,13 +38,20 @@ multi-user web application.
 
 | Question | Decision |
 | --- | --- |
-| Does using a card need educator approval? | **No.** The student spends it; the educator is notified after the fact and ticks it off when honoured. |
+| Does using a card need educator approval? | **No.** The student spends it; the educator is notified after the fact and ticks it off once honoured. |
 | Does a used card return to the deck? | **Yes, immediately.** The deck is a circulating population of copies, not a depleting consumable. |
+| Do held cards expire? | **No.** Hoarding resolves at the semester boundary, via Reset Deck. |
+| Cooldown between drawing and using? | **None.** |
+| Who can reset the deck? | **Educators only.** Reset wipes every student inventory in the room and refills the deck, atomically. |
+| What happens when the deck runs low? | **Alert at 20 copies left**; the educator decides whether to add more. The system never restocks itself. |
+| What identifies a card? | **Its power-up name** (required, editable). Effect text is optional — the art states the effect. |
 
-The second one has the widest blast radius in the design — it makes card copies
-strictly conserved, turns the odds panel into a two-way indicator, makes hoarding
-(not consumption) the source of scarcity, and means **"refill the deck to max"
-must never exist as a button**. See [docs/MECHANICS.md §3.1](docs/MECHANICS.md).
+The circulating-deck decision has the widest blast radius: card copies become
+strictly conserved (`total = in deck + held`), the odds panel becomes a two-way
+indicator, hoarding rather than consumption becomes the source of scarcity, and
+refilling the deck is only ever safe when paired with clearing every hand — which
+is precisely what Reset Deck does. See
+[docs/MECHANICS.md §3.1](docs/MECHANICS.md).
 
 ## What has to change
 

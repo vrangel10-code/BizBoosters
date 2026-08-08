@@ -239,23 +239,25 @@ everyone's chance at it. Pair the `card.used` event with `room.pool_changed` on
 the SSE stream so the whole room sees the odds tick back up in real time — it is
 the best feedback moment in the game and it costs nothing extra to build.
 
-**Restock no longer means what it meant in the prototype.** This is the one that
-will bite if it is not handled deliberately. The prototype's "Reset Deck" sets
-every count back to its maximum. Doing that now, while students are holding
-copies, mints cards out of nothing and permanently breaks conservation — the
-held copies come back later and the deck ends up over-full, silently, forever.
-So the action splits in two:
+**Restock and reset are different operations.** The prototype's "Reset Deck"
+sets every count back to maximum. Refilling the deck *on its own*, while
+students are holding copies, would mint cards from nothing — the held copies
+come back later and the deck ends up permanently over-full. But refilling
+**paired with clearing every student inventory, in one transaction**, is exactly
+consistent: afterwards `held = 0` and `remaining = total` for every card, so
+conservation holds by construction. That pairing is the semester reset.
 
 | Action | Meaning | Safe? |
 | --- | --- | --- |
 | **Add copies** | raise `copies_total` and `copies_remaining` by the same N | always |
 | **Remove copies** | lower both by N, floored at `copies_remaining ≥ 0` | always |
-| **Recall all** | force every `owned` item to `revoked` and return every copy | destructive — students lose their hands; confirmation + activity event |
-| ~~Refill to max~~ | — | **must not exist**; it is the conservation bug |
+| **Reset Deck** | revoke every `owned` item **and** set `remaining = total` for every card, atomically | conservation-safe; destroys student inventories, so educator-only with typed confirmation |
+| Refill without clearing hands | — | never; this is the conservation bug the pairing avoids |
 
-The educator deck screen should therefore show, per card,
-`total = in deck + held by students`, and let the educator adjust *total*, never
-*remaining*. Remaining is a derived, system-owned number.
+Day-to-day, the educator deck screen shows per card
+`total = in deck + held by students` and edits **total**; `remaining` is a
+system-owned number they never touch directly. Reset Deck is the one exception,
+and it is a semester-boundary action, not a mid-term tool.
 
 **The deck can still hit empty — by hoarding.** If every copy is in someone's
 hand, a draw fails with `pool_empty` and tokens are untouched (§8). Give the
@@ -325,14 +327,58 @@ system derives **remaining**):
 - **Removing a card entirely** is permitted only when no student holds one.
   Otherwise offer "set remaining to 0" — the card stops dropping, and copies
   still in hands quietly leave circulation as they are used.
-- **There is no "refill to max."** With used copies returning to the deck, a
-  refill mints cards from nothing. The prototype's "Reset Deck" button maps onto
-  either *add copies* or *recall all* (below), never a blind refill.
-- **Recall all** is the destructive term-reset: every `owned` item becomes
-  `revoked`, every copy returns to the deck, students lose their hands. Educator
-  only, typed confirmation, one `pool.recalled` activity event plus a
-  notification to every student in the room. This is the only action that
-  destroys student inventory, so it should be hard to hit by accident.
+- **Reset Deck** is the semester-boundary action, and the only one that destroys
+  student inventory. In one transaction it revokes every `owned` item in the
+  room and sets `copies_remaining = copies_total` for every card. Never offered
+  as a plain refill (§3.1) — the two halves together are what keep it
+  consistent.
+
+### 5a. Reset Deck
+
+Educator-only, and worth designing defensively because it is irreversible:
+
+- **Never available to students.** Enforced server-side by the room-educator
+  check, not merely by hiding the button.
+- **Typed confirmation** — the educator types the room name, not "OK". A
+  misfired reset in week six wipes a term of student collections.
+- **Blocked on archived rooms.**
+- Emits one `pool.reset` activity event and notifies **every student in the
+  room**, so nobody is left thinking their inventory vanished into a bug.
+- The event payload records what was destroyed (per-student counts), so the
+  history explains the discontinuity even though the items themselves are gone.
+- **Tokens are untouched by default.** Resetting the deck and zeroing balances
+  are different intentions. The dialog offers "also reset token balances to 0"
+  as an unchecked box; ticking it writes an `educator_adjustment` ledger row per
+  student rather than nulling the column, so the ledger stays complete.
+
+### 5b. Low-stock alerts
+
+Because the deck circulates, "running low" is a condition that can arrive, clear
+itself as students spend cards, and arrive again. That needs two mechanisms, not
+one:
+
+**The alert (an event).** When the room's total in-deck copies crosses **down**
+to `rooms.low_stock_threshold` (default **20**, per-room configurable), emit
+`pool.low` and notify every room educator — *"Room 7B is down to 20 cards in the
+deck; 83 are held by students"* — linking to the deck editor to add copies.
+
+It must be **edge-triggered**. Evaluating it on every draw would send a
+notification per draw for a room sitting near the threshold. Keep a
+`low_stock_alerted` boolean on the room:
+
+- fires once, when `in_deck` crosses from `> threshold` to `≤ threshold`
+- rearms only when `in_deck` climbs back above `threshold + hysteresis`
+  (default +5) — which happens naturally as students use cards
+- `pool.empty` at zero is separate and always fires
+
+**The banner (a state).** While `in_deck ≤ threshold`, the educator's room page
+shows a persistent banner with the same numbers and the same call to action.
+Notifications get read and forgotten; the condition persists. Deriving the
+banner from current state rather than from the event is what stops a dismissed
+notification from hiding an empty deck.
+
+Students see the deck count and the `held` figure (§6) but get no alert —
+restocking is not their action to take.
 
 ## 6. Live odds
 
@@ -369,14 +415,20 @@ notifications. Every mutation emits exactly one:
 | `card.use_acknowledged` | educator ticks off a use | ✓ | own | — |
 | `card.returned` | student returns an unused copy to the deck | ✓ | own | ✓ |
 | `pool.updated` | educator adds/removes copies | ✓ | ✓ | — |
-| `pool.recalled` | educator recalls all held cards | ✓ | ✓ | — |
+| `pool.low` | deck crosses below the low-stock threshold | ✓ | — | ✓ |
 | `pool.empty` | last copy leaves the deck | ✓ | ✓ | ✓ |
+| `pool.reset` | educator resets the deck (wipes inventories) | ✓ | ✓ | — |
+
+Every card-related event payload carries `{ card_id, card_name, rarity }`, so a
+log line reads **"Aisha used Cashflow Boost (Rare)"** rather than "Aisha used a
+card". Store the name **on the event** as well as referencing the card, so a
+later rename in the catalog does not silently rewrite history.
 | `enrollment.added` / `enrollment.removed` | roster change | ✓ | own | — |
 | `room.settings_changed` | economy rules edited | ✓ | ✓ | — |
 
 Educator log view: whole room, filterable by student, type, and date, exportable
 to CSV. Student log view: the same table filtered to `subject_enrollment_id =
-me`, plus room-wide events (`pool.updated`, `pool.recalled`, `pool.empty`,
+me`, plus room-wide events (`pool.updated`, `pool.empty`, `pool.reset`,
 `room.settings_changed`).
 
 **Deliberate omission:** students do not see other students' draws by name in

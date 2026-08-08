@@ -1,0 +1,54 @@
+{
+  "$comment": [
+    "The prototype's 20 distinct cards / 103 copies, extracted from",
+    "prototype/lootbox-prototype.html, ready to seed a room's deck.",
+    "",
+    "ACTION REQUIRED: fill in each `name` with the card's power-up name. The",
+    "placeholders below are positional only (C1 = first Common image in the",
+    "prototype, in source order). Names are what the activity log, notifications",
+    "and inventory display, so 'C1' would make the log unreadable.",
+    "",
+    "`effect_text` is optional — the card art states the effect and educators",
+    "know it from the name. Fill it in only where a note would help.",
+    "",
+    "`source_url` is the original Google Drive link, kept for the one-time image",
+    "import only. It is never served to users: the importer downloads each file,",
+    "stores it in object storage, and writes `image_key` on the card. See",
+    "docs/ARCHITECTURE.md §6 for why Drive links cannot be the runtime source."
+  ],
+  "deck": {
+    "name": "BizBoosters Starter Deck",
+    "total_copies": 103,
+    "rarities": [
+      { "code": "C", "label": "Common",    "color_hex": "#3b82f6", "copies_per_card": 10, "cards": 6 },
+      { "code": "U", "label": "Uncommon",  "color_hex": "#10b981", "copies_per_card": 5,  "cards": 6 },
+      { "code": "R", "label": "Rare",      "color_hex": "#8b5cf6", "copies_per_card": 2,  "cards": 5 },
+      { "code": "L", "label": "Legendary", "color_hex": "#fbbf24", "copies_per_card": 1,  "cards": 3 }
+    ]
+  },
+  "cards": [
+    { "ref": "C1", "rarity": "C", "copies": 10, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1Ggoo8vdJKkg7-iOVlgRYs0XIcD-7kwDR/view" },
+    { "ref": "C2", "rarity": "C", "copies": 10, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1klCdvje_SoY8FYEilmMuZgnTWnokFK2H/view" },
+    { "ref": "C3", "rarity": "C", "copies": 10, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1eAmpJ-qrPLx8opRIw4ZHhONP9NT8WiGC/view" },
+    { "ref": "C4", "rarity": "C", "copies": 10, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1_CIonNJ2X23dXWG9drVZ8oW8lBDc072b/view" },
+    { "ref": "C5", "rarity": "C", "copies": 10, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/13XonKcEfwN-aozdhc5B19r7LmRT_T5qB/view" },
+    { "ref": "C6", "rarity": "C", "copies": 10, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1f9k1QvDlJHqYRvoUoOTApQBC8I4dkRt4/view" },
+
+    { "ref": "U1", "rarity": "U", "copies": 5, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1PXNtmFnDwVLmcRTZ1QbEnnVnjonE-WFq/view" },
+    { "ref": "U2", "rarity": "U", "copies": 5, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1qjGKuYbqdnzNngIDA8UPPmkpsH8ver6O/view" },
+    { "ref": "U3", "rarity": "U", "copies": 5, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1TugnHHpGMizzN850q17jZOnrKrwUW2ah/view" },
+    { "ref": "U4", "rarity": "U", "copies": 5, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1YSHRUrcB8F041LoNQHTkstXXOyg9ZJJw/view" },
+    { "ref": "U5", "rarity": "U", "copies": 5, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1wZdxw4hH7LNGxUGgEkU5xKXw6W9KEB-x/view" },
+    { "ref": "U6", "rarity": "U", "copies": 5, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1w8BGao1S_5ygojTYAkGLAsqm_xivWFM1/view" },
+
+    { "ref": "R1", "rarity": "R", "copies": 2, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1B5gJPJq9AATv2EknmqgGfQeTCvdK7zEs/view" },
+    { "ref": "R2", "rarity": "R", "copies": 2, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/11_j21B_vPUReSSV8Y7zxWZNUCl3bzqoD/view" },
+    { "ref": "R3", "rarity": "R", "copies": 2, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1uKOP3wFvrhL5EbdbV-TLYtlfYgjqbpkJ/view" },
+    { "ref": "R4", "rarity": "R", "copies": 2, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1IxI1MAy4D9wHjifP0-BF6GFDhhHPru9E/view" },
+    { "ref": "R5", "rarity": "R", "copies": 2, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/11oPOgBe0ig3dUh6Nm4v9KuUtxPMLfiJK/view" },
+
+    { "ref": "L1", "rarity": "L", "copies": 1, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/1SrD_Us8fgIsb6S7nEwfnOXw-XmDixu-D/view" },
+    { "ref": "L2", "rarity": "L", "copies": 1, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/12hfxHeY0ZyiVdRUmj5NZ7eu9ZMRhqj5C/view" },
+    { "ref": "L3", "rarity": "L", "copies": 1, "name": "", "effect_text": null, "source_url": "https://drive.google.com/file/d/155F0HP_F2VpOuJ95HCGlrzBNfACrtxgi/view" }
+  ]
+}

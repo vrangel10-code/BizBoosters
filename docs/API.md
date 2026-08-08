@@ -43,7 +43,7 @@ accept an `Idempotency-Key` header; it is **required** on draws and trades.
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET/POST | `/rooms` | List owned rooms / create a room. |
-| PATCH | `/rooms/:roomId` | Name, status, economy rules. `If-Match` on room version. |
+| PATCH | `/rooms/:roomId` | Name, status, economy rules, `low_stock_threshold`. `If-Match` on room version. |
 | POST | `/rooms/:roomId/archive` | Term end. |
 | POST | `/rooms/:roomId/clone` | New room from this deck configuration. |
 | GET | `/rooms/:roomId/students` | Roster with balances and inventory counts. |
@@ -57,7 +57,7 @@ accept an `Idempotency-Key` header; it is **required** on draws and trades.
 | POST | `/token-transactions/:id/undo` | Writes the inverse row, linked to the original. |
 | GET | `/rooms/:roomId/deck` | Every card with `copies_total`, `in_deck`, `held_by_students`. |
 | PUT | `/rooms/:roomId/deck` | Bulk set the deck by **total** copies. `{ entries: [{ card_id, copies_total }] }`. The server derives `copies_remaining`; a total below the number currently held is capped and reported back in `details.capped`. |
-| POST | `/rooms/:roomId/deck/recall` | Return every held copy to the deck and revoke student inventories. Destructive; requires `{ confirm: "<room name>" }`. |
+| POST | `/rooms/:roomId/deck/reset` | **Reset Deck.** Revokes every student's inventory in the room and refills every card to `copies_total`, atomically. Destructive, educator-only, requires `{ confirm: "<room name>" }`; optional `{ reset_tokens: true }` also zeroes balances via ledger rows. |
 | GET | `/rooms/:roomId/uses` | Recent card uses. `?acknowledged=false` is the educator's "perks I still owe" list. |
 | POST | `/inventory/:itemId/acknowledge` | `{ note? }` — ticks off a use. Gates nothing; the card is already spent. |
 | GET | `/rooms/:roomId/activity` | Full room log. `?type=&enrollment_id=&from=&to=` |
@@ -68,7 +68,7 @@ accept an `Idempotency-Key` header; it is **required** on draws and trades.
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET/POST | `/cards` | School-wide catalog. |
-| PATCH | `/cards/:id` | Name, description, effect, rarity (rarity locked once the card is in any live deck). |
+| PATCH | `/cards/:id` | Rename, edit optional effect/description, set rarity (rarity locked once the card is in any live deck). Renaming affects future display only — past activity events keep the name they recorded. |
 | POST | `/cards/:id/image` | Multipart upload → validated, resized, stored, returns `image_key`. |
 | POST | `/cards/:id/archive` | Hide from new decks; existing decks unaffected. |
 

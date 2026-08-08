@@ -25,10 +25,14 @@ sees it in their own history with the reason attached.
 
 ## Phase 2 — Cards and decks (≈1.5 weeks)
 - `cards`, `room_cards`, `room_rarities`; image upload to R2 + derivatives.
-- Educator: card catalog CRUD, per-room deck builder editing **total** copies
-  (never `remaining` — see MECHANICS §3.1), bulk "set all Commons to 10", and
-  add/remove copies. No "refill to max" button, ever.
-- Seed script for the prototype's 103-card deck.
+- Educator: card catalog CRUD (name required, effect text optional, rename any
+  time), per-room deck builder editing **total** copies (never `remaining` —
+  MECHANICS §3.1), bulk "set all Commons to 10", add/remove copies.
+- Reset Deck: educator-only, atomic wipe-and-refill, typed confirmation.
+- Low-stock alerting: edge-triggered `pool.low` at 20 + persistent banner.
+- Seed importer for `seed/prototype-deck.json` — downloads the 20 Drive images
+  once, stores them properly, creates the 103-copy deck. **Blocked on the card
+  names being filled in** (`seed/README.md`).
 - Live odds panel and full deck list, ported from the prototype.
 
 **Done when:** an educator builds a room deck from scratch and both roles see

@@ -81,8 +81,14 @@ CREATE TABLE rooms (
   trade_ratio            int  NOT NULL DEFAULT 3   CHECK (trade_ratio > 1),
   students_see_odds      boolean NOT NULL DEFAULT true,
   leaderboard_enabled    boolean NOT NULL DEFAULT false,
-  -- NOTE: card use needs no educator approval, and a used copy always returns
-  -- to the deck. Both are fixed product rules, not per-room settings.
+
+  -- low-stock alerting (MECHANICS §5b). Edge-triggered, hence the flag.
+  low_stock_threshold    int  NOT NULL DEFAULT 20 CHECK (low_stock_threshold >= 0),
+  low_stock_alerted      boolean NOT NULL DEFAULT false,
+
+  -- NOTE: card use needs no educator approval, a used copy always returns to
+  -- the deck, and there is no draw/use cooldown. Fixed product rules, not
+  -- per-room settings.
 
   created_by             uuid NOT NULL REFERENCES users(id),
   created_at             timestamptz NOT NULL DEFAULT now(),
@@ -130,11 +136,16 @@ CREATE TABLE room_rarities (
 CREATE TABLE cards (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   school_id    uuid NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+  -- The power-up name. Required: it is what the activity log, notifications and
+  -- inventory all display. Editable at any time from the educator card page.
   name         text NOT NULL,
+  -- Optional. The card art states the effect and educators know it from the
+  -- name, so this is a convenience field, not a requirement.
+  effect_text  text,
   description  text,
-  effect_text  text,          -- what the student actually gets when they use it
   rarity       rarity_code NOT NULL,
   image_key    text,          -- object-storage key, NOT a URL
+  source_url   text,          -- original import URL; provenance only, never served
   is_archived  boolean NOT NULL DEFAULT false,
   created_by   uuid NOT NULL REFERENCES users(id),
   created_at   timestamptz NOT NULL DEFAULT now(),
@@ -261,6 +272,9 @@ CREATE TABLE activity_events (
   type                text NOT NULL,   -- see MECHANICS.md §7 for the vocabulary
   actor_user_id       uuid REFERENCES users(id),
   subject_enrollment_id uuid REFERENCES enrollments(id),
+  -- Card events carry {card_id, card_name, rarity}. card_name is SNAPSHOTTED
+  -- here, not joined at read time, so renaming a card in the catalog does not
+  -- rewrite what the log said happened last month.
   payload             jsonb NOT NULL DEFAULT '{}',
   created_at          timestamptz NOT NULL DEFAULT now()
 );
