@@ -4,9 +4,12 @@ const nextConfig = {
   poweredByHeader: false,
   // argon2 and sharp are native modules; bundling them breaks them.
   serverExternalPackages: ['@node-rs/argon2', 'sharp'],
-  // Emits a self-contained server with only the files it actually needs, so
-  // the production image does not carry node_modules.
-  output: 'standalone',
+
+  // Standalone output is for the Docker image only. Hosts with their own
+  // Next.js adapter (Netlify, Vercel, Amplify) expect the default `.next`
+  // output and find nothing to publish when this is on — which surfaces as
+  // "Site not found" rather than as a build error.
+  ...(process.env.BUILD_STANDALONE === 'true' ? { output: 'standalone' } : {}),
 };
 
 export default nextConfig;

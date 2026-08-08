@@ -1,0 +1,20 @@
+# Netlify deployment.
+#
+# Read docs/DEPLOY.md before relying on this: BizBoosters needs a database and
+# long-lived connections, and Netlify provides neither. This file makes the
+# build succeed and the app run; it cannot make server-sent events work on a
+# platform whose functions time out.
+
+[build]
+  command = "pnpm prisma generate && pnpm build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NEXT_TELEMETRY_DISABLED = "1"
+  # Never set BUILD_STANDALONE here — it breaks Netlify's Next.js runtime.
+
+# Installed automatically by Netlify when a Next.js app is detected, but pinned
+# explicitly so a detection change cannot silently alter the deploy.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

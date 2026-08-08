@@ -23,6 +23,8 @@ RUN pnpm prisma generate
 # never connects. The real URL arrives at runtime.
 ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
 ENV NEXT_TELEMETRY_DISABLED=1
+# Opt into the self-contained server; see next.config.mjs.
+ENV BUILD_STANDALONE=true
 RUN pnpm build
 
 # ─── Runtime ─────────────────────────────────────────────────────────────────

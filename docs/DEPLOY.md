@@ -69,6 +69,78 @@ then invite your teachers from the admin area.
 The first is your integrity check — it returns 500 if card copies or token
 balances ever stop adding up. Alert on that.
 
+## Netlify
+
+Netlify can run this, but it is not a natural fit and you should know what you
+give up before committing to it. Netlify has no database and its functions time
+out, so you supply the first and lose one feature to the second.
+
+### Why a fresh deploy says "Site not found"
+
+That message means Netlify has no successfully published deploy for the site.
+For this repo there are three likely causes, in the order they bite:
+
+**1. `output: 'standalone'` in `next.config.mjs`.** This was added for the
+Docker image and it breaks Netlify's Next.js runtime: standalone writes a
+self-contained server to `.next/standalone`, Netlify's adapter looks for the
+normal `.next` output, finds nothing to publish, and you get "Site not found"
+rather than a build error. **Fixed** — standalone is now opt-in via
+`BUILD_STANDALONE=true`, which only the Dockerfile sets.
+
+**2. No `DATABASE_URL` at build time.** `next build` imports every route module
+to collect the route map, which used to construct a Prisma client — and a build
+environment has no database because building does not need one. **Fixed** — the
+client is now constructed on first use, so the build succeeds with no database
+configured at all.
+
+**3. No `netlify.toml`.** Added, pinning Node 22 and the Next.js plugin.
+
+Pull the latest branch and redeploy. If it still fails, the Netlify deploy log
+will now show a real error rather than an empty publish.
+
+### What you still have to configure
+
+**A database.** Netlify does not provide one. [Neon](https://neon.tech) has a
+free tier and speaks plain Postgres — create a project, copy the pooled
+connection string, and set it as `DATABASE_URL` in Netlify → Site configuration
+→ Environment variables. Also set `APP_URL`, `SESSION_COOKIE_NAME` and
+`CRON_SECRET`.
+
+**Run the migrations yourself.** There is no entrypoint on Netlify, so nothing
+creates the schema. Run it from your machine against the production database —
+which is safer than migrating from a build container anyway, because you see
+the output and it cannot run twice concurrently:
+
+```bash
+DATABASE_URL="postgresql://…neon…" pnpm prisma migrate deploy
+DATABASE_URL="postgresql://…neon…" pnpm admin:create \
+  --school "Your School" --email you@school.edu --name "Your Name"
+```
+
+Repeat the first command after any deploy that adds a migration.
+
+**Object storage for card art.** Netlify has no persistent disk, so the local
+storage driver would lose every image on each deploy. Configure R2 or S3 — see
+"Card images" below.
+
+**Scheduled functions for the cron jobs**, since Netlify has no cron service in
+the way Railway does. Netlify Scheduled Functions can call the two endpoints, or
+run them from any machine with `curl`.
+
+### What does not work on Netlify
+
+**Server-sent events.** Netlify Functions have an execution timeout measured in
+seconds; the `/api/v1/stream` connection is meant to stay open for the whole
+lesson. It will be cut, the client will fall back to polling, and the educator's
+badge and everyone's live odds will update **every 20 seconds instead of
+instantly**.
+
+Nothing breaks and no data is lost — the fallback was built for exactly this —
+but the moment where a classmate spends a Legendary and you watch your own
+chances jump is gone. That moment is the best thing about the circulating deck,
+which is why the recommendation above is a container host. Your call; it works
+either way.
+
 ## Alternatives
 
 | Host | Verdict |
