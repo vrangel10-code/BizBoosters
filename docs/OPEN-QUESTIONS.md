@@ -62,9 +62,7 @@ Not in the brief. It is the most-requested feature in every card game ever
 built, and it is also where classroom coercion happens.
 → *Not in v1. If added later, make it educator-approved and per-room optional.*
 
-**Q9. Should students see each other's activity?**
-→ *No by default. Room-wide events yes, other students' draws no. Behind a room
-setting if you want a social feed.*
+**Q9. Should students see each other's activity? — DECIDED: no.** See Q17.
 
 **Q10. Duplicate-heavy draws.**
 With 60 of 103 copies Common, a student's first several draws will be mostly
@@ -97,12 +95,25 @@ educators get a `pool.low` notification and a persistent banner; they choose
 whether to add copies. Edge-triggered with hysteresis, because a circulating
 deck crosses the threshold repeatedly. See [MECHANICS.md §5b](MECHANICS.md).
 
-**Q15. Does Reset Deck also clear token balances? — open, low stakes.**
-Not asked, and the two are separable: a semester reset of the *cards* does not
-obviously imply wiping what students earned.
-→ *Default: tokens survive a deck reset. The confirm dialog offers "also reset
-token balances" as an unchecked box; ticking it writes a proper ledger
-adjustment per student rather than nulling the balance.*
+**Q15. Does Reset Deck also clear token balances? — DECIDED: no, never.**
+Reset Deck clears inventories and refills the deck. Balances survive, with no
+option to include them. Tokens are earned recognition; cards are the spendable
+resource. An educator who genuinely wants to zero a balance uses the adjustment
+tool, which leaves a ledger row and a reason.
+
+**Q16. Who creates educator accounts? — DECIDED: admin invitation only.**
+No public signup route exists for any role. A `school_admin` invites by email
+with a single-use, 7-day, revocable token; the invitee sets their own password
+on redemption, which doubles as email verification. Educators cannot invite
+peers. The first `school_admin` per school is created out-of-band by CLI — the
+one account outside the flow, and worth putting in the runbook.
+
+**Q17. Do students see each other's activity? — DECIDED: no.**
+Not by name, not anonymised, not behind a room setting. A student sees their own
+history plus room-wide events. Aggregate deck state (remaining counts, odds,
+total copies held) stays visible to everyone — that says how many copies are out
+in the room, never who holds them. The per-student breakdown is educator-only,
+and the history endpoint filters server-side.
 
 ## B. Things the brief does not mention
 
@@ -112,9 +123,9 @@ adjustment per student rather than nulling the balance.*
    single biggest determinant of whether a teacher adopts the tool.
 2. **Password resets.** Students forget passwords constantly. Educator-initiated
    reset must be two clicks, and it must revoke existing sessions.
-3. **Educator accounts themselves.** Who creates them? Self-signup with email
-   verification, invite-only by a school admin, or manual? *Recommend:
-   invite-only for v1 — it keeps a public app from filling with strangers.*
+3. ~~**Educator accounts themselves.**~~ Resolved by Q16: admin invitation
+   only, no public signup. Note the bootstrapping consequence — the first
+   school admin must be created by CLI.
 4. **Co-teachers and cover staff.** `room_educators` exists for this. A single
    `owner_id` on the room will hurt within a term.
 5. **A school layer.** Even for one teacher, having `schools` from day one is
@@ -166,6 +177,8 @@ Listed so they are decisions rather than oversights: **educator approval of card
 use** (removed by Q1 — if a school ever needs it, it reappears as a
 `use_pending` state plus a queue, and nothing else in the model has to change),
 held-card expiry (Q11), student-to-student trading,
-leaderboards, achievements/badges, card crafting beyond the 3-for-1 upgrade,
+leaderboards (which would require reopening Q17, since they are cross-student
+visibility by definition), achievements/badges, card crafting beyond the 3-for-1
+upgrade,
 parent accounts, LMS/Google Classroom integration, native mobile apps,
 multi-language support, and a card-art marketplace.

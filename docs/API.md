@@ -21,6 +21,22 @@ accept an `Idempotency-Key` header; it is **required** on draws and trades.
 | POST | `/auth/change-password` | `{ current_password, new_password }`. The **only** route reachable while `must_change_password` is set. Revokes all other sessions. |
 | POST | `/auth/forgot-password` | Educators only (email). Students go through their educator. |
 | GET | `/auth/me` | Session user + rooms + unread notification count. |
+| GET | `/auth/invitations/:token` | Validate an educator invitation before showing the form. Returns school name and invited email, or `invitation_invalid`. |
+| POST | `/auth/invitations/:token/accept` | `{ display_name, password }` → creates the educator account and signs them in. Single use. |
+
+There is deliberately **no** `POST /auth/signup`, for any role. Educators exist
+by invitation from a school admin; students exist by roster creation.
+
+## School admin
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/admin/educators` | Educators in the school, with status and last login. |
+| POST | `/admin/invitations` | `{ email, role: 'educator' \| 'school_admin' }` — sends the invite. |
+| GET | `/admin/invitations` | Pending/expired invitations. |
+| POST | `/admin/invitations/:id/resend` | Rotates the token and re-sends. |
+| DELETE | `/admin/invitations/:id` | Revoke before acceptance. |
+| POST | `/admin/educators/:id/deactivate` | Blocks login and revokes sessions; rooms and history are retained. |
 
 ## Student
 
@@ -34,7 +50,7 @@ accept an `Idempotency-Key` header; it is **required** on draws and trades.
 | POST | `/rooms/:roomId/trades` | `{ from_rarity, item_ids: [uuid × trade_ratio] }`. `Idempotency-Key` required. |
 | POST | `/inventory/:itemId/use` | `{ note? }` → spends the card immediately, no approval. Returns the copy to the deck and notifies the room's educators. `Idempotency-Key` recommended. → `{ item, pool }` |
 | POST | `/inventory/:itemId/return` | Give an unused copy back to the deck. |
-| GET | `/rooms/:roomId/history` | This student's activity in this room. |
+| GET | `/rooms/:roomId/history` | This student's own activity, plus room-wide events. Filtered server-side to `subject_enrollment_id = me` — students never receive another student's events. |
 | GET | `/notifications` | `?unread=true` |
 | POST | `/notifications/read` | `{ ids: [] }` or `{ all: true }` |
 
@@ -57,7 +73,7 @@ accept an `Idempotency-Key` header; it is **required** on draws and trades.
 | POST | `/token-transactions/:id/undo` | Writes the inverse row, linked to the original. |
 | GET | `/rooms/:roomId/deck` | Every card with `copies_total`, `in_deck`, `held_by_students`. |
 | PUT | `/rooms/:roomId/deck` | Bulk set the deck by **total** copies. `{ entries: [{ card_id, copies_total }] }`. The server derives `copies_remaining`; a total below the number currently held is capped and reported back in `details.capped`. |
-| POST | `/rooms/:roomId/deck/reset` | **Reset Deck.** Revokes every student's inventory in the room and refills every card to `copies_total`, atomically. Destructive, educator-only, requires `{ confirm: "<room name>" }`; optional `{ reset_tokens: true }` also zeroes balances via ledger rows. |
+| POST | `/rooms/:roomId/deck/reset` | **Reset Deck.** Revokes every student's inventory in the room and refills every card to `copies_total`, atomically. Destructive, educator-only, requires `{ confirm: "<room name>" }`. Token balances are never affected. |
 | GET | `/rooms/:roomId/uses` | Recent card uses. `?acknowledged=false` is the educator's "perks I still owe" list. |
 | POST | `/inventory/:itemId/acknowledge` | `{ note? }` — ticks off a use. Gates nothing; the card is already spent. |
 | GET | `/rooms/:roomId/activity` | Full room log. `?type=&enrollment_id=&from=&to=` |

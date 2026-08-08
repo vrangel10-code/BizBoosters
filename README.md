@@ -45,6 +45,9 @@ multi-user web application.
 | Who can reset the deck? | **Educators only.** Reset wipes every student inventory in the room and refills the deck, atomically. |
 | What happens when the deck runs low? | **Alert at 20 copies left**; the educator decides whether to add more. The system never restocks itself. |
 | What identifies a card? | **Its power-up name** (required, editable). Effect text is optional — the art states the effect. |
+| Does reset clear token balances? | **No, never.** Tokens are earned recognition; only cards reset. |
+| Who creates educator accounts? | **Admin invitation only.** No public signup route exists for any role. |
+| Do students see each other's activity? | **No.** Own history plus room-wide events. Aggregate deck state is shared; who holds what is educator-only. |
 
 The circulating-deck decision has the widest blast radius: card copies become
 strictly conserved (`total = in deck + held`), the odds panel becomes a two-way

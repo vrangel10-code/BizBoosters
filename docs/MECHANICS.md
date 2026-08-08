@@ -346,10 +346,12 @@ Educator-only, and worth designing defensively because it is irreversible:
   room**, so nobody is left thinking their inventory vanished into a bug.
 - The event payload records what was destroyed (per-student counts), so the
   history explains the discontinuity even though the items themselves are gone.
-- **Tokens are untouched by default.** Resetting the deck and zeroing balances
-  are different intentions. The dialog offers "also reset token balances to 0"
-  as an unchecked box; ticking it writes an `educator_adjustment` ledger row per
-  student rather than nulling the column, so the ledger stays complete.
+- **Tokens are never touched.** Reset Deck clears inventories and refills the
+  deck; balances survive untouched, with no option to include them. Tokens are
+  earned recognition and cards are the spendable resource — a semester reset of
+  the deck is not a reason to erase what a student earned. An educator who does
+  want to zero a balance has the adjustment tool (§1), which leaves a ledger row
+  and a reason.
 
 ### 5b. Low-stock alerts
 
@@ -431,9 +433,18 @@ to CSV. Student log view: the same table filtered to `subject_enrollment_id =
 me`, plus room-wide events (`pool.updated`, `pool.empty`, `pool.reset`,
 `room.settings_changed`).
 
-**Deliberate omission:** students do not see other students' draws by name in
-their own log. Reconsider only if the room wants a public feed — it is a nice
-social feature and a mild privacy decision, so it belongs behind a room setting.
+**Fixed rule: students never see another student's draws, uses, or token
+awards** — not by name, not anonymised, and not behind a room setting. A student
+sees their own activity plus room-wide events. There is no public feed.
+
+What students *do* still see is the aggregate state of the deck: remaining
+counts, live odds, and the total `held` figure (§6). That is deliberately not
+the same thing — it says how many copies are out in the room, never who has
+them. The per-student breakdown of who holds what is educator-only.
+
+This has an implementation consequence worth stating, because it is easy to get
+wrong: the student history endpoint filters on `subject_enrollment_id = me`
+**server-side**. Never send the room's full event list and filter in the client.
 
 ## 8. Failure modes to design for
 

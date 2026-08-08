@@ -8,10 +8,14 @@ the riskiest thing — the shared-deck draw transaction — is proven early.
 - Migrations for `schools`, `users`, `sessions`.
 - Session auth: educator email/password, student login-ID/password, forced
   first-login password change, rate limiting, force-logout.
+- `educator_invitations` + the admin invite/accept flow. No signup route.
+- `pnpm admin:create` CLI to bootstrap the first school admin, documented in the
+  runbook — without it a fresh deployment has no way in.
 - CI: lint, typecheck, test, migrate-check.
 
-**Done when:** an educator and a student can log in, and the student is forced
-to change their password before reaching anything else.
+**Done when:** an admin invites an educator by email, that educator redeems the
+link and sets a password, and a student they create is forced to change theirs
+before reaching anything else.
 
 ## Phase 1 — Rooms, rosters, tokens (≈1.5 weeks)
 - `rooms`, `room_educators`, `enrollments`, `token_transactions`,

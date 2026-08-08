@@ -95,11 +95,34 @@ derived from the session plus the room in the path.
 
 ## 4. Authentication
 
-### Educators
-Email + password (Argon2id, `memoryCost` ≥ 19 MiB, per OWASP). Email
-verification on signup, self-service reset by emailed token. Optional Google
-OAuth later — most teachers already have a Google Workspace account, and it
-removes a password from your threat surface.
+### Educators — invitation only
+**There is no public signup route.** `POST /auth/signup` does not exist, for any
+role. A `school_admin` invites an educator by email; the invitation carries a
+single-use token, and the invitee sets their own password when redeeming it.
+Email + password thereafter (Argon2id, `memoryCost` ≥ 19 MiB, per OWASP), with
+self-service reset by emailed token.
+
+Invitation rules:
+
+- Single-use, expiring (default 7 days), revocable before acceptance, and
+  resendable — which rotates the token rather than re-mailing the old one.
+- Redeeming proves control of the mailbox, so it doubles as email verification.
+  No separate verification step.
+- Only a `school_admin` may invite, and only within their own school. An
+  educator cannot invite a peer; that is the point of the decision.
+- Accepting binds the new user to the inviting school. The email on the
+  invitation is authoritative — the invitee cannot substitute a different one.
+
+**Bootstrapping:** the first `school_admin` of a school cannot be invited by
+anyone, so it is created out-of-band by a CLI command (`pnpm admin:create`)
+run by you against the target environment. Name this explicitly in the runbook;
+it is the one account that exists outside the invitation flow, and forgetting it
+is how you end up with an unreachable production deployment.
+
+Optional Google OAuth later — most teachers already have a Google Workspace
+account, and it removes a password from your threat surface. It would sit behind
+the same invitation gate: the invitation is what authorizes the account, OAuth
+only replaces the password.
 
 ### Students
 Students get an assigned **login ID** (e.g. `apex-4821` or the school's student

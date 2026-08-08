@@ -53,6 +53,27 @@ CREATE TABLE users (
   CONSTRAINT identity_present CHECK (email IS NOT NULL OR login_id IS NOT NULL)
 );
 
+-- Educator accounts are created by invitation only — there is no public signup
+-- route (ARCHITECTURE §4). A school_admin invites by email; the invitee sets
+-- their own password when redeeming the token.
+CREATE TABLE educator_invitations (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  school_id   uuid NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+  email       citext NOT NULL,
+  role        user_role NOT NULL DEFAULT 'educator'
+              CHECK (role IN ('educator','school_admin')),
+  token_hash  text NOT NULL UNIQUE,          -- sha256 of the emailed token
+  invited_by  uuid NOT NULL REFERENCES users(id),
+  expires_at  timestamptz NOT NULL,          -- default now() + 7 days
+  accepted_at timestamptz,
+  accepted_by uuid REFERENCES users(id),
+  revoked_at  timestamptz,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+-- At most one live invitation per email per school; re-inviting revokes the old.
+CREATE UNIQUE INDEX ON educator_invitations (school_id, email)
+  WHERE accepted_at IS NULL AND revoked_at IS NULL;
+
 CREATE TABLE sessions (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -80,7 +101,8 @@ CREATE TABLE rooms (
   trades_enabled         boolean NOT NULL DEFAULT true,
   trade_ratio            int  NOT NULL DEFAULT 3   CHECK (trade_ratio > 1),
   students_see_odds      boolean NOT NULL DEFAULT true,
-  leaderboard_enabled    boolean NOT NULL DEFAULT false,
+  -- No leaderboard flag: cross-student visibility is off by product rule
+  -- (OPEN-QUESTIONS Q17), so there is nothing for it to switch on.
 
   -- low-stock alerting (MECHANICS §5b). Edge-triggered, hence the flag.
   low_stock_threshold    int  NOT NULL DEFAULT 20 CHECK (low_stock_threshold >= 0),
