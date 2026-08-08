@@ -23,7 +23,10 @@ export default async function DashboardPage() {
           <h1>Your rooms</h1>
           <p className="lede">Signed in as {session.user.displayName}.</p>
         </div>
-        <SignOutButton />
+        <nav className="page-nav">
+          <Link href="/cards">Card catalog</Link>
+          <SignOutButton />
+        </nav>
       </div>
 
       {rooms.length === 0 ? (

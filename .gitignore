@@ -11,3 +11,6 @@ next-env.d.ts
 coverage/
 seed/images/
 .env.test
+
+# Local card art storage (development driver)
+storage/

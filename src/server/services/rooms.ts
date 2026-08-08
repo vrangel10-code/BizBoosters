@@ -2,6 +2,7 @@ import type { Room, User } from '@prisma/client';
 import { prisma } from '../db';
 import { apiError } from '../errors';
 import { recordActivity } from './activity';
+import { ensureRoomRarities } from './decks';
 
 export interface CreateRoomInput {
   actor: User;
@@ -31,6 +32,8 @@ export async function createRoom({
         educators: { create: { userId: actor.id, role: 'owner' } },
       },
     });
+
+    await ensureRoomRarities(room.id, tx);
 
     await recordActivity(
       {

@@ -31,7 +31,7 @@ real handlers so the first-login gate is proven rather than asserted.
 
 **Done when:** an educator awards 40 tokens to a class of 30 and every student
 sees it in their own history with the reason attached. ✅ Verified end to end;
-199 tests green.
+133 tests green.
 
 Spec correction found while building: MECHANICS said a bulk award writes one
 room-level activity event. The student history filters on
@@ -39,20 +39,25 @@ room-level activity event. The student history filters on
 student it was about — exactly the acceptance case. It now writes one event per
 student, sharing a `batch_id` so the educator's log still collapses to one line.
 
-## Phase 2 — Cards and decks (≈1.5 weeks)
+## Phase 2 — Cards and decks ✅ complete
 - `cards`, `room_cards`, `room_rarities`; image upload to R2 + derivatives.
 - Educator: card catalog CRUD (name required, effect text optional, rename any
   time), per-room deck builder editing **total** copies (never `remaining` —
   MECHANICS §3.1), bulk "set all Commons to 10", add/remove copies.
 - Reset Deck: educator-only, atomic wipe-and-refill, typed confirmation.
 - Low-stock alerting: edge-triggered `pool.low` at 20 + persistent banner.
-- Seed importer for `seed/prototype-deck.json` — downloads the 20 Drive images
-  once, stores them properly, creates the 103-copy deck. **Blocked on the card
-  names being filled in** (`seed/README.md`).
+- Seed importer for `seed/prototype-deck.json`, building the 103-copy deck.
 - Live odds panel and full deck list, ported from the prototype.
 
 **Done when:** an educator builds a room deck from scratch and both roles see
-matching live odds.
+matching live odds. ✅ Verified end to end; 176 tests green. The rebuilt deck
+reproduces the prototype's odds exactly: 58.3 / 29.1 / 9.7 / 2.9 %.
+
+Card art could not be fetched from Google Drive in the build environment (the
+network policy blocks it), so the download path is covered by the importer's
+error handling and the local-file path was verified with generated
+placeholders. Art still needs importing on a machine that can reach Drive, or
+by dropping files into `seed/images/`.
 
 ## Phase 3 — The draw (≈1.5 weeks) — highest risk
 - `draws`, `inventory_items`, the transactional draw service, idempotency keys.

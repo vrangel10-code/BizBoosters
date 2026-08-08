@@ -41,7 +41,11 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
             tokens per draw
           </p>
         </div>
-        <Link href="/dashboard">← All rooms</Link>
+        <nav className="page-nav">
+          <Link href={`/rooms/${roomId}/deck`}>Deck</Link>
+          <Link href="/cards">Card catalog</Link>
+          <Link href="/dashboard">← All rooms</Link>
+        </nav>
       </div>
 
       <RoomManager roomId={roomId} roster={roster} />

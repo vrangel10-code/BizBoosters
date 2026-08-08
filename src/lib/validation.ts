@@ -74,3 +74,37 @@ export const adjustTokensSchema = z
   .refine((value) => (value.delta === undefined) !== (value.target_balance === undefined), {
     message: 'Provide either a delta or a target balance, not both.',
   });
+
+// ─── Phase 2 ────────────────────────────────────────────────────────────────
+
+export const rarityEnum = z.enum(['C', 'U', 'R', 'L']);
+
+export const createCardSchema = z.object({
+  name: z.string().trim().min(1, 'Enter a card name.').max(120),
+  rarity: rarityEnum,
+  effect_text: z.string().trim().max(500).optional(),
+  description: z.string().trim().max(1000).optional(),
+});
+
+export const updateCardSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  rarity: rarityEnum.optional(),
+  effect_text: z.string().trim().max(500).nullable().optional(),
+  description: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const setDeckSchema = z.object({
+  entries: z
+    .array(
+      z.object({
+        card_id: z.string().uuid(),
+        copies_total: z.number().int().min(0).max(1000),
+      }),
+    )
+    .min(1, 'A deck needs at least one card.')
+    .max(500),
+});
+
+export const resetDeckSchema = z.object({
+  confirm: z.string().min(1, 'Type the room name to confirm.'),
+});

@@ -211,3 +211,135 @@ td.down { color: var(--danger); font-weight: 600; }
   .feed li { flex-direction: column; gap: 0.125rem; }
   .feed-when { min-width: 0; }
 }
+
+/* ─── Phase 2: cards and decks ─────────────────────────────────────────────── */
+
+.alert.warn {
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.4);
+  color: #fcd34d;
+}
+
+.odds-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.odds-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: #0f172a;
+  border-radius: 0.375rem;
+  border-left: 3px solid var(--border);
+}
+.odds-label { display: block; font-weight: 600; font-size: 0.875rem; }
+.odds-count { display: block; font-size: 0.75rem; color: var(--muted); }
+.odds-chance { font-weight: 700; font-variant-numeric: tabular-nums; }
+.odds-total {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  margin: 1rem 0 0;
+}
+
+.deck-group { margin-top: 1.5rem; }
+.deck-group:first-of-type { margin-top: 0; }
+.deck-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.9375rem;
+  margin: 0 0 0.75rem;
+  padding-bottom: 0.375rem;
+  border-bottom: 1px solid var(--border);
+}
+.deck-group-count { font-size: 0.75rem; color: var(--muted); font-weight: 500; }
+.rarity-C { color: #60a5fa; }
+.rarity-U { color: #34d399; }
+.rarity-R { color: #a78bfa; }
+.rarity-L { color: #fbbf24; }
+
+.deck-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 1rem;
+}
+.deck-card.exhausted { opacity: 0.4; filter: grayscale(1); }
+.deck-card-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin: 0.5rem 0 0;
+  line-height: 1.3;
+}
+.deck-card-meta { font-size: 0.6875rem; color: var(--muted); margin: 0.125rem 0 0; }
+
+/* Card face, carried over from the prototype. */
+.bb-card {
+  position: relative;
+  aspect-ratio: 160 / 220;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: #1e293b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5), 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+.bb-card img { width: 100%; height: 100%; object-fit: cover; }
+.bb-card-initial { font-size: 2rem; font-weight: 800; color: rgba(255, 255, 255, 0.65); }
+.card-C { background: linear-gradient(135deg, #3b82f6, #1d4ed8); border-color: #60a5fa; }
+.card-U { background: linear-gradient(135deg, #10b981, #047857); border-color: #34d399; }
+.card-R { background: linear-gradient(135deg, #8b5cf6, #5b21b6); border-color: #a78bfa; }
+.card-L { background: linear-gradient(135deg, #fbbf24, #b45309); border-color: #fde68a; }
+
+.deck-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 0.125rem 0.4375rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  background: rgba(15, 23, 42, 0.9);
+  border-bottom-left-radius: 0.375rem;
+  backdrop-filter: blur(4px);
+}
+.deck-badge.out { background: rgba(248, 113, 113, 0.85); color: #fff; }
+
+.deck-builder-row {
+  display: grid;
+  grid-template-columns: 3rem 1fr 5rem 5rem;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.deck-builder-row:last-child { border-bottom: 0; }
+.deck-builder-row input { margin-bottom: 0; text-align: center; }
+.deck-builder-row .bb-card { width: 3rem; }
+.deck-builder-held { font-size: 0.75rem; color: var(--muted); text-align: center; }
+
+.danger-zone { border-color: rgba(248, 113, 113, 0.35); }
+button.danger { background: #b91c1c; }
+
+@media (max-width: 640px) {
+  .deck-builder-row { grid-template-columns: 2.5rem 1fr 4rem; }
+  .deck-builder-held { display: none; }
+}
+
+select {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  margin-bottom: 1rem;
+  background: #0f172a;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.card-actions { display: flex; gap: 0.75rem; margin-top: 0.375rem; }
+
+.page-nav { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+.page-nav button { width: auto; }

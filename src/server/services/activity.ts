@@ -14,7 +14,11 @@ export type ActivityType =
   | 'enrollment.removed'
   | 'room.created'
   | 'room.settings_changed'
-  | 'room.archived';
+  | 'room.archived'
+  | 'pool.updated'
+  | 'pool.low'
+  | 'pool.empty'
+  | 'pool.reset';
 
 export interface ActivityInput {
   roomId: string;

@@ -46,7 +46,10 @@ export default async function StudentRoomPage({
           <h1>{context.room.name}</h1>
           <p className="lede">Your tokens and history in this room.</p>
         </div>
-        <Link href="/home">← All rooms</Link>
+        <nav className="page-nav">
+          <Link href={`/rooms/${roomId}/cards`}>Cards in this room</Link>
+          <Link href="/home">← All rooms</Link>
+        </nav>
       </div>
 
       <div className="panel balance-panel">

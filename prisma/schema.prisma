@@ -32,6 +32,7 @@ model School {
   users       User[]
   invitations EducatorInvitation[]
   rooms       Room[]
+  cards       Card[]
 
   @@map("schools")
 }
@@ -69,6 +70,7 @@ model User {
   auditActed        AuditLog[]           @relation("AuditActor")
   auditTargeted     AuditLog[]           @relation("AuditTarget")
   roomsCreated      Room[]               @relation("RoomCreator")
+  cardsCreated      Card[]               @relation("CardCreator")
   roomEducator      RoomEducator[]
   enrollments       Enrollment[]
   tokenActions      TokenTransaction[]
@@ -200,6 +202,8 @@ model Room {
   educators   RoomEducator[]
   enrollments Enrollment[]
   activity    ActivityEvent[]
+  roomCards   RoomCard[]
+  rarities    RoomRarity[]
 
   @@index([schoolId, status])
   @@map("rooms")
@@ -291,4 +295,86 @@ model ActivityEvent {
   @@index([roomId, createdAt])
   @@index([subjectEnrollmentId, createdAt])
   @@map("activity_events")
+}
+
+// ─── Phase 2: card catalog and room decks ──────────────────────────────────
+
+enum RarityCode {
+  C
+  U
+  R
+  L
+}
+
+/// A card DEFINITION: name, art, rarity. Owned by the school and reusable in
+/// every room. Distinct from stock (RoomCard) and from an owned copy
+/// (phase 3) — see docs/DATA-MODEL.md §1.
+model Card {
+  id       String @id @default(uuid()) @db.Uuid
+  schoolId String @map("school_id") @db.Uuid
+
+  /// The power-up name. Required: it is what the activity log, notifications
+  /// and inventory display. Editable at any time.
+  name String
+
+  /// Optional — the card art states the effect and educators know it from the
+  /// name, so this is a convenience field.
+  effectText  String? @map("effect_text")
+  description String?
+
+  rarity RarityCode
+
+  /// Object-storage key, never a URL: the bucket can move without a data
+  /// migration. Null until art is uploaded.
+  imageKey String? @map("image_key")
+  /// Original import URL. Provenance only; never served to users.
+  sourceUrl String? @map("source_url")
+
+  isArchived Boolean  @default(false) @map("is_archived")
+  createdBy  String   @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  school    School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  creator   User       @relation("CardCreator", fields: [createdBy], references: [id])
+  roomCards RoomCard[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId, rarity])
+  @@map("cards")
+}
+
+/// The finite shared deck for one room: how many copies exist, and how many are
+/// currently in the deck rather than in a student's hand.
+model RoomCard {
+  id     String @id @default(uuid()) @db.Uuid
+  roomId String @map("room_id") @db.Uuid
+  cardId String @map("card_id") @db.Uuid
+
+  /// Educators edit THIS. `copiesRemaining` is system-owned.
+  copiesTotal Int @map("copies_total")
+  /// Copies currently in the deck. total - remaining = copies held by students.
+  copiesRemaining Int @map("copies_remaining")
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  card Card @relation(fields: [cardId], references: [id], onDelete: Restrict)
+
+  @@unique([roomId, cardId])
+  @@index([roomId])
+  @@map("room_cards")
+}
+
+/// Per-room labels and colours for the four rarities. Keeps the enum stable
+/// while letting a room rename "Legendary" to "Founder Tier".
+model RoomRarity {
+  roomId    String     @map("room_id") @db.Uuid
+  code      RarityCode
+  label     String
+  colorHex  String     @map("color_hex")
+  sortOrder Int        @map("sort_order")
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@id([roomId, code])
+  @@map("room_rarities")
 }

@@ -24,6 +24,9 @@ export type ErrorCode =
   | 'already_enrolled'
   | 'already_undone'
   | 'undo_window_expired'
+  | 'card_name_in_use'
+  | 'rarity_locked'
+  | 'confirmation_required'
   | 'internal_error';
 
 const STATUS: Record<ErrorCode, number> = {
@@ -48,6 +51,9 @@ const STATUS: Record<ErrorCode, number> = {
   already_enrolled: 409,
   already_undone: 409,
   undo_window_expired: 409,
+  card_name_in_use: 409,
+  rarity_locked: 409,
+  confirmation_required: 422,
   internal_error: 500,
 };
 

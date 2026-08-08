@@ -42,6 +42,51 @@ http://localhost:3000/invite/AkxIS1cxT8qg...
 
 Open the link to redeem it. Nothing leaves the machine.
 
+## Importing the starter deck
+
+`seed/prototype-deck.json` holds the 20 cards and their copy counts (103 copies
+total). To load them into a school's catalog, and optionally build a room's deck
+from them:
+
+```bash
+pnpm deck:import --school <school-id>            # catalog only
+pnpm deck:import --school <school-id> --room <room-id>   # and build the deck
+pnpm deck:import --school <school-id> --skip-images      # names only, art later
+```
+
+Find the school id with `pnpm db:studio`, or from the output of
+`pnpm admin:create`.
+
+### Card art
+
+Each card's `source_url` points at Google Drive. The importer tries to download
+it, but Drive throttles, blocks hotlinking unpredictably, and returns an HTML
+interstitial for files that are not publicly shared — the importer detects that
+case and reports it rather than storing a web page as a card image.
+
+**The reliable route is local files.** Save each image as
+`seed/images/<ref>.png` — `C1.png`, `U3.png`, `L2.png`, matching the `ref` in
+the JSON — and re-run. Local files always win over the URL.
+
+A failed download never aborts the import: the deck works without art, and any
+card can have art uploaded later from the card catalog page.
+
+## Where card art is stored
+
+With no `S3_BUCKET` set, images are written to `STORAGE_DIR` (default
+`./storage`) and served by the app at `/api/v1/images/...`. That is fine for
+development and for a single long-lived server, and **wrong on serverless**,
+where the filesystem is ephemeral and every deploy loses the art.
+
+For production set the `S3_*` variables (see `.env.example`) to any
+S3-compatible bucket — Cloudflare R2 is the cheap option. Set
+`S3_PUBLIC_BASE_URL` as well and images are served straight from your CDN
+instead of proxied through the app.
+
+Each upload is stored in three sizes (160/400/800px wide) as WebP, keyed by a
+hash of the original bytes, so re-uploading the same file costs nothing and the
+year-long cache header is safe.
+
 ## Verification
 
 ```bash
