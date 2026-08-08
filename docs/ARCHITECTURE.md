@@ -50,7 +50,7 @@ bizboosters/
 │  │  │  └─ rooms/[roomId]/
 │  │  │     ├─ students/            # roster, token award, inventory drill-down
 │  │  │     ├─ deck/                # card pool configuration
-│  │  │     ├─ requests/            # pending card-use approvals
+│  │  │     ├─ uses/               # recent card uses + acknowledgement ticks
 │  │  │     └─ activity/            # room activity log
 │  │  ├─ (admin)/cards/             # school-wide card catalog
 │  │  └─ api/v1/…

@@ -25,8 +25,9 @@ sees it in their own history with the reason attached.
 
 ## Phase 2 — Cards and decks (≈1.5 weeks)
 - `cards`, `room_cards`, `room_rarities`; image upload to R2 + derivatives.
-- Educator: card catalog CRUD, per-room deck builder with per-card copy counts,
-  bulk "set all Commons to 10", restock/reset with confirmation.
+- Educator: card catalog CRUD, per-room deck builder editing **total** copies
+  (never `remaining` — see MECHANICS §3.1), bulk "set all Commons to 10", and
+  add/remove copies. No "refill to max" button, ever.
 - Seed script for the prototype's 103-card deck.
 - Live odds panel and full deck list, ported from the prototype.
 
@@ -47,14 +48,19 @@ matching live odds.
 balances exactly.
 
 ## Phase 4 — Use, trades, notifications (≈1.5 weeks)
-- `card_use_requests`, the item state machine, educator Requests queue.
-- 3-for-1 trades against real inventory.
-- Return-to-pool.
+- The item state machine and the use transaction: spend a card, return the copy
+  to the deck, notify the educators. No approval gate.
+- Educator "Recent uses" list with acknowledgement tick-boxes.
+- 3-for-1 trades against real inventory; return-unused-to-deck.
 - `notifications` + SSE stream + polling fallback + unread badges.
-- `room.pool_changed` live odds propagation.
+- `room.pool_changed` propagation on both draw **and** use, so odds visibly move
+  in both directions.
+- Room dashboard: "N of M copies held by students", with a per-student
+  breakdown. This is the diagnostic for an empty circulating deck.
 
 **Done when:** a student uses a card, the educator's badge increments within a
-second, approval resolves it, and both histories agree.
+second, every other student's odds tick *up* in the same moment, and the
+conservation check still balances.
 
 ## Phase 5 — Logs, exports, polish, launch (≈1.5 weeks)
 - Educator room activity log with filters and CSV export.
@@ -71,7 +77,8 @@ second, approval resolves it, and both histories agree.
 | Layer | What |
 | --- | --- |
 | Unit | Draw selection distribution (χ² over 100k rolls against expected odds), token arithmetic, state-machine transitions. |
-| Integration | Every service against real Postgres in a transaction, including concurrent-draw races. |
+| Integration | Every service against real Postgres in a transaction, including concurrent-draw races and concurrent draw-vs-use on the same card. |
+| Conservation | Property test: a random sequence of draws, uses, trades, returns and deck edits must always end with `total = in_deck + held`, for every card. This is the one test that would catch a bad transaction boundary in the circulating-deck model. |
 | E2E (Playwright) | Educator creates room → imports students → awards tokens → student logs in, changes password, draws, uses a card → educator approves → both logs correct. |
 | Load | 50 concurrent draws in one room; assert conservation. |
 

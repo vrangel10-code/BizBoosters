@@ -32,9 +32,8 @@ accept an `Idempotency-Key` header; it is **required** on draws and trades.
 | GET | `/rooms/:roomId/pool` | Live per-rarity counts and percentages, and — if `students_see_odds` — the full deck list (mirrors the prototype's "View Full Deck List"). |
 | POST | `/rooms/:roomId/draws` | Spend tokens, draw one card. `Idempotency-Key` required. → `{ draw, card, new_balance, pool }` |
 | POST | `/rooms/:roomId/trades` | `{ from_rarity, item_ids: [uuid × trade_ratio] }`. `Idempotency-Key` required. |
-| POST | `/inventory/:itemId/use` | `{ note? }` → creates a `card_use_request` (or completes the use if approval is off). |
-| POST | `/inventory/:itemId/cancel-use` | Withdraw a pending request. |
-| POST | `/inventory/:itemId/return` | Return an owned copy to the room deck. |
+| POST | `/inventory/:itemId/use` | `{ note? }` → spends the card immediately, no approval. Returns the copy to the deck and notifies the room's educators. `Idempotency-Key` recommended. → `{ item, pool }` |
+| POST | `/inventory/:itemId/return` | Give an unused copy back to the deck. |
 | GET | `/rooms/:roomId/history` | This student's activity in this room. |
 | GET | `/notifications` | `?unread=true` |
 | POST | `/notifications/read` | `{ ids: [] }` or `{ all: true }` |
@@ -56,11 +55,11 @@ accept an `Idempotency-Key` header; it is **required** on draws and trades.
 | POST | `/rooms/:roomId/tokens/award` | `{ enrollment_ids: [], amount, note }` — one ledger row per student. |
 | POST | `/rooms/:roomId/tokens/adjust` | `{ enrollment_id, delta \| target_balance, note }` — note mandatory. |
 | POST | `/token-transactions/:id/undo` | Writes the inverse row, linked to the original. |
-| GET | `/rooms/:roomId/deck` | Deck configuration: every card, copies total/remaining. |
-| PUT | `/rooms/:roomId/deck` | Bulk set the deck. `{ entries: [{ card_id, copies_total }] }` |
-| POST | `/rooms/:roomId/deck/restock` | The prototype's "Reset Deck". `{ mode: 'refill' \| 'reset_all' }`, confirmation required. |
-| GET | `/rooms/:roomId/requests` | Pending card-use requests. `?status=pending` |
-| POST | `/requests/:id/approve` / `/requests/:id/reject` | `{ note? }` |
+| GET | `/rooms/:roomId/deck` | Every card with `copies_total`, `in_deck`, `held_by_students`. |
+| PUT | `/rooms/:roomId/deck` | Bulk set the deck by **total** copies. `{ entries: [{ card_id, copies_total }] }`. The server derives `copies_remaining`; a total below the number currently held is capped and reported back in `details.capped`. |
+| POST | `/rooms/:roomId/deck/recall` | Return every held copy to the deck and revoke student inventories. Destructive; requires `{ confirm: "<room name>" }`. |
+| GET | `/rooms/:roomId/uses` | Recent card uses. `?acknowledged=false` is the educator's "perks I still owe" list. |
+| POST | `/inventory/:itemId/acknowledge` | `{ note? }` — ticks off a use. Gates nothing; the card is already spent. |
 | GET | `/rooms/:roomId/activity` | Full room log. `?type=&enrollment_id=&from=&to=` |
 | GET | `/rooms/:roomId/activity/export` | CSV. |
 
@@ -80,10 +79,11 @@ user belongs to. Supports `Last-Event-ID` for gap-free reconnect.
 
 ```
 event: notification
-data: {"id":"…","type":"card.use_requested","room_id":"…","payload":{…}}
+data: {"id":"…","type":"card.used","room_id":"…","payload":{…}}
 
 event: room.pool_changed
-data: {"room_id":"…","remaining":{"C":57,"U":30,"R":10,"L":3},"total":100}
+data: {"room_id":"…","remaining":{"C":57,"U":30,"R":10,"L":3},
+       "in_deck":100,"held":3,"total":103,"cause":"card.used"}
 
 event: tokens.changed
 data: {"room_id":"…","enrollment_id":"…","balance":40,"delta":20}
@@ -104,11 +104,11 @@ reconnects.
 | `account_locked` | 423 | Too many failed logins. |
 | `password_change_required` | 403 | First-login gate. |
 | `insufficient_tokens` | 409 | Includes `details.required` and `details.balance`. |
-| `pool_empty` | 409 | No copies left; tokens untouched. |
+| `pool_empty` | 409 | No copies in the deck; tokens untouched. Includes `details.held_by_students` — with a circulating deck this is always the explanation. |
 | `target_rarity_empty` | 409 | Trade target out of stock. |
 | `invalid_trade_selection` | 422 | Wrong count, wrong rarity, or items not owned. |
 | `item_not_owned` | 404 | |
-| `item_state_conflict` | 409 | e.g. use requested on an already-used copy. |
+| `item_state_conflict` | 409 | The copy already left `owned` — used, returned, or revoked. Also the safe outcome of a double-click on "use". |
 | `room_archived` | 409 | No mutations on archived rooms. |
 | `version_conflict` | 409 | Stale `If-Match` on room/deck edit. |
 | `rate_limited` | 429 | With `Retry-After`. |

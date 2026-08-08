@@ -6,16 +6,24 @@ recommended default so nothing blocks the build.
 
 ## A. Mechanics decisions
 
-**Q1. Does "using" a card need educator approval?**
-The brief says a use notifies the educator. If a card is a real perk ("skip one
-homework"), a notification alone means the student marks it spent and hopes the
-educator honours it.
-→ *Default: approval required (`use_requires_approval = true`), with a per-room
-switch to turn it into fire-and-forget.*
+**Q1. Does "using" a card need educator approval? — DECIDED: no.**
+A student spends a card unilaterally; the educator is notified after the fact.
+No `use_pending` state, no approval queue, no reject path. The educator's
+outstanding-perk tracking is a passive tick-box (`card_use_acknowledgements`)
+that gates nothing. *Consequence: the trust model is social, not enforced — the
+system records what was spent and when, and the classroom handles the rest.*
 
-**Q2. Does a used card go back into the deck?**
-→ *Default: no. Used copies are consumed, the deck depletes over the term, and
-the educator restocks deliberately. Scarcity is the point.*
+**Q2. Does a used card go back into the deck? — DECIDED: yes, immediately.**
+The deck is a circulating population of copies, not a depleting consumable.
+Total copies are constant unless an educator adds or removes some. This has the
+widest blast radius of any decision so far — see
+[MECHANICS.md §3.1](MECHANICS.md). The two things it changes that are easy to
+miss:
+- **"Refill the deck to max" must not exist.** With copies out in hands, a
+  refill mints cards from nothing and silently breaks conservation forever. The
+  prototype's "Reset Deck" splits into *add copies* and *recall all*.
+- **An empty deck now means hoarding, not exhaustion.** The educator UI has to
+  show "N of M copies held by students" or the empty state looks like a bug.
 
 **Q3. What is on a card?**
 The prototype's cards are bare images with no names. Without a name and effect
@@ -61,6 +69,23 @@ Commons, which reads as bad luck to a 13-year-old. Consider a per-room pity rule
 duplicates.
 → *Default: no pity rule; make the live odds panel prominent so the maths is
 visible. Revisit after one term of real use.*
+
+**Q11. Should held cards expire? (raised by Q2)**
+Now that the deck circulates, the only way it runs dry is students hoarding. A
+class that collects and never spends starves itself, and the effect compounds at
+the rare end — one student sitting on the only Legendary blocks twenty-nine
+others indefinitely.
+→ *Ship without expiry. Instrument it: put "copies held" on the room dashboard
+and watch one term. Expiry is a punitive mechanic and it is much easier to add
+once you can see whether hoarding actually happens.*
+Options if it does: a soft nudge notification after N days, a per-student hold
+cap, or an end-of-week auto-return. A cap is the gentlest — it limits hoarding
+without ever taking something away.
+
+**Q12. Can a student use a card they just drew, in the same lesson? (raised by Q2)**
+Nothing stops it, and the copy immediately re-enters the deck.
+→ *Allow it. If drawing and instantly spending turns out to be a token-laundering
+pattern you dislike, a per-room cooldown is a small addition later.*
 
 ## B. Things the brief does not mention
 
@@ -120,7 +145,10 @@ visible. Revisit after one term of real use.*
 
 ## C. Deliberately out of scope for v1
 
-Listed so they are decisions rather than oversights: student-to-student trading,
+Listed so they are decisions rather than oversights: **educator approval of card
+use** (removed by Q1 — if a school ever needs it, it reappears as a
+`use_pending` state plus a queue, and nothing else in the model has to change),
+held-card expiry (Q11), student-to-student trading,
 leaderboards, achievements/badges, card crafting beyond the 3-for-1 upgrade,
 parent accounts, LMS/Google Classroom integration, native mobile apps,
 multi-language support, and a card-art marketplace.

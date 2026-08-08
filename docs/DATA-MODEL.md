@@ -79,10 +79,10 @@ CREATE TABLE rooms (
   draw_cost_tokens       int  NOT NULL DEFAULT 20  CHECK (draw_cost_tokens > 0),
   trades_enabled         boolean NOT NULL DEFAULT true,
   trade_ratio            int  NOT NULL DEFAULT 3   CHECK (trade_ratio > 1),
-  use_requires_approval  boolean NOT NULL DEFAULT true,
-  used_card_returns_to_pool boolean NOT NULL DEFAULT false,
   students_see_odds      boolean NOT NULL DEFAULT true,
   leaderboard_enabled    boolean NOT NULL DEFAULT false,
+  -- NOTE: card use needs no educator approval, and a used copy always returns
+  -- to the deck. Both are fixed product rules, not per-room settings.
 
   created_by             uuid NOT NULL REFERENCES users(id),
   created_at             timestamptz NOT NULL DEFAULT now(),
@@ -155,9 +155,11 @@ CREATE TABLE room_cards (
 CREATE INDEX ON room_cards (room_id) INCLUDE (copies_remaining);
 
 -- ─── Inventory ──────────────────────────────────────────────────────────────
--- One row per owned copy. The UI stacks by card_id for display.
-CREATE TYPE item_state AS ENUM ('owned','use_pending','used','returned','revoked');
-CREATE TYPE acquisition AS ENUM ('draw','trade','educator_grant','transfer');
+-- One row per copy a student has held. The UI stacks by card_id for display.
+-- A row is a HOLDING RECORD, not a copy: only state='owned' rows are holding a
+-- physical copy out of the deck. Terminal states have already released it.
+CREATE TYPE item_state AS ENUM ('owned','used','returned','revoked');
+CREATE TYPE acquisition AS ENUM ('draw','trade','educator_grant');
 
 CREATE TABLE inventory_items (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -167,14 +169,21 @@ CREATE TABLE inventory_items (
   state          item_state NOT NULL DEFAULT 'owned',
   acquired_via   acquisition NOT NULL,
   acquired_at    timestamptz NOT NULL DEFAULT now(),
-  used_at        timestamptz,
-  returned_at    timestamptz,
+  used_at        timestamptz,    -- set when the student spends it
+  returned_at    timestamptz,    -- set when the copy goes back to the deck
+  student_note   text,           -- optional "what I'm using this for"
   draw_id        uuid   -- FK added after `draws` exists; see ALTER below
 );
 -- ALTER TABLE inventory_items ADD CONSTRAINT inventory_items_draw_fk
 --   FOREIGN KEY (draw_id) REFERENCES draws(id);
 CREATE INDEX ON inventory_items (enrollment_id, state);
-CREATE INDEX ON inventory_items (room_id, state);
+-- Hot path: "how many copies are currently held out of this room's deck".
+CREATE INDEX ON inventory_items (room_id, card_id) WHERE state = 'owned';
+
+-- A used copy returns to the deck immediately, so `used_at` and `returned_at`
+-- are set in the same transaction. They stay separate columns because a
+-- 'returned' item (given back unused) has no used_at, and reporting cares
+-- about the difference.
 
 -- ─── Draws ──────────────────────────────────────────────────────────────────
 CREATE TYPE draw_kind AS ENUM ('token_draw','trade_upgrade');
@@ -227,22 +236,22 @@ CREATE TABLE token_transactions (
 );
 CREATE INDEX ON token_transactions (enrollment_id, created_at DESC);
 
--- ─── Card use / redemption ──────────────────────────────────────────────────
-CREATE TYPE use_status AS ENUM ('pending','approved','rejected','cancelled');
+-- ─── Card use ───────────────────────────────────────────────────────────────
+-- There is no approval workflow and therefore no request table. A use is a
+-- state transition on inventory_items plus an activity event plus a
+-- notification. What the educator still owes the student in the real world is
+-- tracked by the notification's read state and an optional acknowledgement:
 
-CREATE TABLE card_use_requests (
-  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  inventory_item_id  uuid NOT NULL UNIQUE REFERENCES inventory_items(id) ON DELETE CASCADE,
-  enrollment_id      uuid NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
+CREATE TABLE card_use_acknowledgements (
+  inventory_item_id  uuid PRIMARY KEY REFERENCES inventory_items(id) ON DELETE CASCADE,
   room_id            uuid NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-  status             use_status NOT NULL DEFAULT 'pending',
-  student_note       text,
-  educator_note      text,
-  requested_at       timestamptz NOT NULL DEFAULT now(),
-  resolved_at        timestamptz,
-  resolved_by        uuid REFERENCES users(id)
+  acknowledged_by    uuid NOT NULL REFERENCES users(id),
+  acknowledged_at    timestamptz NOT NULL DEFAULT now(),
+  note               text
 );
-CREATE INDEX ON card_use_requests (room_id, status);
+-- Purely a to-do checkbox for the educator ("I honoured this perk"). It never
+-- gates the student, never blocks the use, and never affects the deck. Absence
+-- of a row means "not yet ticked off", which is the default.
 
 -- ─── Activity + notifications ───────────────────────────────────────────────
 -- The room's shared history. Every mutation writes exactly one row here.
@@ -298,14 +307,29 @@ alerts rather than silently repairs.
 | `token_balance >= 0` | CHECK constraint |
 | `copies_remaining BETWEEN 0 AND copies_total` | CHECK constraint |
 | `enrollments.token_balance = SUM(token_transactions.delta)` | nightly job + alert |
-| copies of card X in room = `copies_remaining` + items in `owned`/`use_pending` (+ `used`, if `used_card_returns_to_pool = false`) | nightly job + alert |
+| **`room_cards.copies_total = copies_remaining + COUNT(inventory_items WHERE state='owned')`**, per (room, card) | nightly job + alert |
 | a student cannot hold an item for a card not in their room's pool | FK + service check |
-| exactly one `pending` use request per item | UNIQUE on `inventory_item_id` |
+| an item may leave `owned` exactly once | service check inside the tx |
 
-The second-to-last one is the real integrity check on the whole economy: **card
-copies are conserved**. Every copy is either in the deck, in someone's hand, or
-spent. If that sum drifts, you have a bug in a transaction boundary and you want
-to know the same night, not at the end of term.
+The bolded one is the real integrity check on the whole economy: **card copies
+are conserved**. Because used copies return to the deck, every copy is in
+exactly one of two places at any moment — in the deck, or in one student's hand.
+There is no third bucket. That makes the check a strict equality with no
+conditional terms, which is much easier to reason about and to alert on than the
+depleting-deck alternative:
+
+```sql
+SELECT rc.room_id, rc.card_id, rc.copies_total, rc.copies_remaining, held.n
+FROM room_cards rc
+LEFT JOIN LATERAL (
+  SELECT count(*) AS n FROM inventory_items i
+  WHERE i.room_id = rc.room_id AND i.card_id = rc.card_id AND i.state = 'owned'
+) held ON true
+WHERE rc.copies_remaining + coalesce(held.n, 0) <> rc.copies_total;
+```
+
+Any row returned is a transaction-boundary bug. Alert the same night — by the
+end of term it is unrecoverable.
 
 ## 4. Sizing
 

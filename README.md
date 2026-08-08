@@ -34,6 +34,18 @@ multi-user web application.
 - State persisted to `localStorage` with an optional anonymous-auth Firestore
   mirror.
 
+## Decisions locked in
+
+| Question | Decision |
+| --- | --- |
+| Does using a card need educator approval? | **No.** The student spends it; the educator is notified after the fact and ticks it off when honoured. |
+| Does a used card return to the deck? | **Yes, immediately.** The deck is a circulating population of copies, not a depleting consumable. |
+
+The second one has the widest blast radius in the design — it makes card copies
+strictly conserved, turns the odds panel into a two-way indicator, makes hoarding
+(not consumption) the source of scarcity, and means **"refill the deck to max"
+must never exist as a button**. See [docs/MECHANICS.md §3.1](docs/MECHANICS.md).
+
 ## What has to change
 
 Three things in the prototype do not survive contact with multiple users, and

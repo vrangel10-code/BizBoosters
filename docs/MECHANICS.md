@@ -156,42 +156,120 @@ never play the chest opening and then apologise.
 
 ## 3. Card lifecycle
 
+**Decided:** using a card needs no educator approval, and a used copy returns to
+the deck immediately. Both are fixed product rules, not room settings.
+
 ```
-                    ┌────────── educator adds copies ──────────┐
-                    ▼                                          │
-              ┌───────────┐   draw / trade    ┌───────┐         │
-              │  IN POOL  │──────────────────▶│ OWNED │         │
-              └───────────┘                   └───┬───┘         │
-                    ▲                             │             │
-                    │  return / trade-in          │ student     │
-                    │                             │ "use"       │
-                    │                        ┌────▼───────┐     │
-                    │                        │USE_PENDING │     │
-                    │                        └────┬───────┘     │
-                    │             educator rejects│ approves    │
-                    └─────────────◀───────────────┤             │
-                                                  ▼             │
-                                              ┌──────┐          │
-                                              │ USED │──────────┘
-                                              └──────┘   (only if
-                                                          used_card_returns_to_pool)
+              ┌──────────────────────────────────────────────┐
+              │                                              │
+              ▼                                              │
+        ┌───────────┐    draw (20 tokens)      ┌───────┐      │
+        │  IN DECK  │─────────────────────────▶│ OWNED │      │
+        │           │    trade upgrade         │       │      │
+        └───────────┘                          └───┬───┘      │
+              ▲                                    │          │
+              │                          ┌─────────┴────────┐ │
+              │  return unused           │ student uses it  │ │
+              │  (state='returned')      │ (state='used')   │ │
+              └──────────────────────────┴──────────────────┴─┘
+                        the copy is back in the deck, instantly
 ```
 
-Your brief says a student "uses" a card and the educator is notified. That
-leaves two mechanics undefined, and both need a decision (see
-[OPEN-QUESTIONS.md](OPEN-QUESTIONS.md) Q1–Q2):
+Only `owned` holds a copy out of the deck. `used`, `returned`, and `revoked` are
+terminal history rows whose copy is already back in circulation.
 
-1. **Is use a request or a fait accompli?** Modelled here as
-   `rooms.use_requires_approval`. With approval on, the item goes to
-   `use_pending`, the educator sees it in a Requests queue, and approve/reject
-   resolves it — a rejected card goes back to `owned`, not to the pool. With
-   approval off, the item goes straight to `used` and the educator gets a
-   notification only. Approval-on is the safer default for a real classroom
-   perk ("skip one homework"), because the educator has to actually honour it.
-2. **Does a used copy return to the deck?** `rooms.used_card_returns_to_pool`.
-   Off means the deck is a consumable term-long resource that depletes and needs
-   an educator restock. On means the deck recycles and cards circulate forever.
-   Off is the better default — scarcity is what makes the Legendary matter.
+**The use transaction** (no approval gate, so it is short):
+
+```sql
+BEGIN;
+SELECT pg_advisory_xact_lock(hashtextextended(room_id::text, 0));
+
+UPDATE inventory_items
+   SET state = 'used', used_at = now(), returned_at = now(), student_note = $n
+ WHERE id = $i AND enrollment_id = $e AND state = 'owned';
+-- 0 rows → ROLLBACK, 409 item_state_conflict (double-click or already spent)
+
+UPDATE room_cards SET copies_remaining = copies_remaining + 1
+ WHERE room_id = $r AND card_id = $c AND copies_remaining < copies_total;
+-- the CHECK guard is the backstop against a double-return inflating the deck
+
+INSERT INTO activity_events (type = 'card.used', ...);
+INSERT INTO notifications (...) for each room educator;
+COMMIT;
+-- after commit: SSE `notification` + `room.pool_changed`
+```
+
+The same advisory lock as the draw, for the same reason: it is a deck mutation.
+The `state = 'owned'` predicate in the `UPDATE` is what makes a double-click
+idempotent — the second one matches zero rows and returns cleanly instead of
+returning the copy to the deck twice.
+
+### What "no approval" means for the educator's workflow
+
+The educator still has to actually honour the perk in the real world, and the
+brief's notification is how they find out. What the removal of approval takes
+away is any *record of what they still owe*. Replace it with the lightest
+possible thing: a **Recent uses** list on the educator's room page, where each
+entry has a tick-box writing a `card_use_acknowledgements` row.
+
+It gates nothing. The student's card is already spent and already back in the
+deck. It exists so a teacher who gets six "homework pass" notifications during a
+lesson can tell which ones they have honoured. Unread notification state alone
+would half-work, but reading a notification and honouring a perk are different
+events, and conflating them loses the teacher's place.
+
+### 3.1 The circulating deck — consequences of the return rule
+
+Returning used copies to the deck changes what the deck *is*. It is no longer a
+term-long consumable that drains toward empty; it is a fixed population of
+copies circulating between the deck and students' hands. Total copies in
+existence never changes except when an educator deliberately adds or removes
+some. Several things follow, and they are mostly good:
+
+**Scarcity is now driven by hoarding, not consumption.** The only reason a card
+is unavailable is that someone is holding it. A student sitting on the room's
+single Legendary is denying it to twenty-nine others; the moment they spend it,
+it is back in the pool and everyone can chase it again. That is a far more
+interesting classroom dynamic than a deck that only ever empties, and it makes
+*using* cards pro-social rather than merely self-interested.
+
+**The odds panel now moves in both directions.** In the prototype, live odds
+were a one-way ratchet toward zero. Now a Legendary being spent visibly restores
+everyone's chance at it. Pair the `card.used` event with `room.pool_changed` on
+the SSE stream so the whole room sees the odds tick back up in real time — it is
+the best feedback moment in the game and it costs nothing extra to build.
+
+**Restock no longer means what it meant in the prototype.** This is the one that
+will bite if it is not handled deliberately. The prototype's "Reset Deck" sets
+every count back to its maximum. Doing that now, while students are holding
+copies, mints cards out of nothing and permanently breaks conservation — the
+held copies come back later and the deck ends up over-full, silently, forever.
+So the action splits in two:
+
+| Action | Meaning | Safe? |
+| --- | --- | --- |
+| **Add copies** | raise `copies_total` and `copies_remaining` by the same N | always |
+| **Remove copies** | lower both by N, floored at `copies_remaining ≥ 0` | always |
+| **Recall all** | force every `owned` item to `revoked` and return every copy | destructive — students lose their hands; confirmation + activity event |
+| ~~Refill to max~~ | — | **must not exist**; it is the conservation bug |
+
+The educator deck screen should therefore show, per card,
+`total = in deck + held by students`, and let the educator adjust *total*, never
+*remaining*. Remaining is a derived, system-owned number.
+
+**The deck can still hit empty — by hoarding.** If every copy is in someone's
+hand, a draw fails with `pool_empty` and tokens are untouched (§8). Give the
+educator the number that explains it: **"84 of 103 copies held by students"** on
+the room dashboard, with a per-student breakdown. Without it, "the deck is
+empty" looks like a bug rather than a class that is sitting on its cards.
+
+**A student can redraw a card they just used.** Expected and thematically fine —
+the copy went back in the box. Do not special-case it.
+
+**Deferred question:** should held cards expire, so hoarding self-corrects? A
+term-long hold is not obviously wrong, and expiry is a punitive mechanic to
+introduce sight-unseen. Ship without it, watch one term, and use the "copies
+held" metric to decide. See [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md) Q11.
 
 ## 4. Trades (the prototype's marketplace)
 
@@ -236,29 +314,43 @@ The prototype's default deck, for seeding: 6 Commons ×10, 6 Uncommons ×5, 5
 Rares ×2, 3 Legendaries ×1 = **103 copies**, starting odds 58.3 / 29.1 / 9.7 /
 2.9 %.
 
-Rules for editing a live deck:
+Rules for editing a live deck (see §3.1 — the educator edits **total**, and the
+system derives **remaining**):
 
-- **Adding copies** is always safe.
-- **Reducing copies** may only reduce `copies_remaining`, never below zero, and
-  never retroactively take a card out of a student's hand. `copies_total` cannot
-  drop below the number of copies already distributed.
-- **Removing a card entirely** is only permitted when no student holds one;
-  otherwise offer "set remaining to 0" (stop it dropping) instead.
-- **Restock / reset** (the prototype's "Reset Deck") must be an educator-only,
-  explicitly confirmed action, and must state whether it wipes student
-  inventories. Default: it refills the deck and leaves inventories alone, which
-  means copies in circulation are *added* to the total in existence. Say this in
-  the confirm dialog — it is the one action that can break copy conservation on
-  purpose.
+- **Adding copies** is always safe: `total += N`, `remaining += N`.
+- **Reducing copies** takes them out of the deck only: `total -= N`,
+  `remaining -= N`, floored at `remaining ≥ 0`. It never reaches into a
+  student's hand, so `total` cannot drop below the number currently held. If the
+  educator asks for more than that, cap it and say so.
+- **Removing a card entirely** is permitted only when no student holds one.
+  Otherwise offer "set remaining to 0" — the card stops dropping, and copies
+  still in hands quietly leave circulation as they are used.
+- **There is no "refill to max."** With used copies returning to the deck, a
+  refill mints cards from nothing. The prototype's "Reset Deck" button maps onto
+  either *add copies* or *recall all* (below), never a blind refill.
+- **Recall all** is the destructive term-reset: every `owned` item becomes
+  `revoked`, every copy returns to the deck, students lose their hands. Educator
+  only, typed confirmation, one `pool.recalled` activity event plus a
+  notification to every student in the room. This is the only action that
+  destroys student inventory, so it should be hard to hit by accident.
 
 ## 6. Live odds
 
-Both roles see the same panel the prototype has: per-rarity remaining count and
-percentage, plus `N / M cards remaining`. Percentages are derived, never stored:
-`copies_remaining(rarity) / total_remaining`. Pushed to every connected client in
-the room on `room.pool_changed`, so a Legendary being pulled visibly moves
-everyone's odds. That shared-scarcity feedback is the best part of the game
-design you already have — make it prominent.
+Both roles see the same panel the prototype has: per-rarity count and
+percentage, plus `N in deck / M total`. Percentages are derived, never stored:
+`copies_remaining(rarity) / total_in_deck`. Pushed to every connected client in
+the room on `room.pool_changed`.
+
+Because the deck circulates (§3.1), this panel is now a **two-way** indicator: a
+Legendary being pulled drops everyone's odds, and that same Legendary being
+spent restores them, live, for the whole room. Show the direction of the change
+— a brief green/red tick on the affected rarity — because the moment a rare card
+comes back into circulation is the most motivating event in the game, and it is
+invisible if the number just quietly changes.
+
+Add one number the prototype has no concept of: **`held: N`**, the copies
+currently in students' hands. For students it explains why the deck looks thin;
+for educators it is the diagnostic for an empty deck.
 
 `rooms.students_see_odds` exists for educators who would rather not show them.
 
@@ -273,17 +365,19 @@ notifications. Every mutation emits exactly one:
 | `tokens.adjusted` | educator edits/undoes | ✓ | own | — |
 | `card.drawn` | student draws | ✓ | own | ✓ |
 | `card.traded` | trade upgrade | ✓ | own | ✓ |
-| `card.use_requested` | student requests use | ✓ | own | ✓ |
-| `card.use_approved` / `card.use_rejected` | educator resolves | ✓ | own | — |
-| `card.used` | use completes (no-approval mode) | ✓ | own | ✓ |
-| `card.returned` | student returns to pool | ✓ | own | ✓ |
-| `pool.restocked` | educator restocks/edits deck | ✓ | ✓ | — |
+| `card.used` | student uses a card (copy returns to deck) | ✓ | own | ✓ |
+| `card.use_acknowledged` | educator ticks off a use | ✓ | own | — |
+| `card.returned` | student returns an unused copy to the deck | ✓ | own | ✓ |
+| `pool.updated` | educator adds/removes copies | ✓ | ✓ | — |
+| `pool.recalled` | educator recalls all held cards | ✓ | ✓ | — |
+| `pool.empty` | last copy leaves the deck | ✓ | ✓ | ✓ |
 | `enrollment.added` / `enrollment.removed` | roster change | ✓ | own | — |
 | `room.settings_changed` | economy rules edited | ✓ | ✓ | — |
 
 Educator log view: whole room, filterable by student, type, and date, exportable
 to CSV. Student log view: the same table filtered to `subject_enrollment_id =
-me`, plus room-wide events (`pool.restocked`, `room.settings_changed`).
+me`, plus room-wide events (`pool.updated`, `pool.recalled`, `pool.empty`,
+`room.settings_changed`).
 
 **Deliberate omission:** students do not see other students' draws by name in
 their own log. Reconsider only if the room wants a public feed — it is a nice
@@ -293,11 +387,13 @@ social feature and a mild privacy decision, so it belongs behind a room setting.
 
 | Situation | Behaviour |
 | --- | --- |
-| Deck empty on draw | Reject before debiting. Educator gets a `pool.empty` notification so they know to restock. |
-| Deck empties mid-lesson | Draw button disables live via `room.pool_changed`. |
+| Deck empty on draw | Reject before debiting. Educator gets a `pool.empty` notification naming how many copies are held by whom — with a circulating deck, empty means hoarded, not exhausted. |
+| Deck empties mid-lesson | Draw button disables live via `room.pool_changed`, and re-enables the moment anyone uses a card. |
 | Student double-clicks draw | Idempotency key replays the same result. |
+| Student double-clicks "use" | The `state = 'owned'` predicate matches zero rows on the second attempt → `409 item_state_conflict`, and the copy is returned to the deck exactly once. |
+| Student uses a card while the educator is editing that card's copies | Both take the room advisory lock, so they serialize. Whichever runs second sees the other's numbers. |
 | Network drops after draw | Same. On reconnect the client re-sends the same key and gets the original card. |
-| Educator removes a student mid-term | Enrollment → `removed`; inventory and history are retained, held copies stay out of the deck until an educator explicitly reclaims them. |
+| Educator removes a student mid-term | Enrollment → `removed`; history is retained, and their held copies are `revoked` back into the deck in the same transaction. A departed student must not hold the room's Legendary hostage for the rest of term. |
 | Student moved between rooms | Not a transfer. New enrollment, fresh balance, fresh inventory. If you need to carry tokens across, do it as two explicit ledger rows. |
 | Two educators edit the deck at once | Advisory lock plus optimistic concurrency (`If-Match` on a room version) → second write gets 409 and re-reads. |
 | Term rollover | Archive the room; offer "clone deck configuration into a new room" so setup is not repeated. |
