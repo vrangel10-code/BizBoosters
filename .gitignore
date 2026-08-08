@@ -9,8 +9,8 @@ next-env.d.ts
 .env.*.local
 .DS_Store
 coverage/
-seed/images/
 .env.test
 
-# Local card art storage (development driver)
+# Generated derivatives written by the storage driver. Source art lives in
+# seed/images/ and IS committed; this is the processed output.
 storage/

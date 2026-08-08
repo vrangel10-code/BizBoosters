@@ -59,17 +59,37 @@ Find the school id with `pnpm db:studio`, or from the output of
 
 ### Card art
 
-Each card's `source_url` points at Google Drive. The importer tries to download
-it, but Drive throttles, blocks hotlinking unpredictably, and returns an HTML
-interstitial for files that are not publicly shared — the importer detects that
-case and reports it rather than storing a web page as a card image.
+There are three ways to get art onto a card. All three end in the same place —
+processed into three sizes and recorded as `cards.image_key`.
 
-**The reliable route is local files.** Save each image as
-`seed/images/<ref>.png` — `C1.png`, `U3.png`, `L2.png`, matching the `ref` in
-the JSON — and re-run. Local files always win over the URL.
+**1. Commit the files to the repo (recommended for the starter deck).** Put the
+images in `seed/images/` and commit them, then run the importer. Naming is
+forgiving: a file matches if its name, ignoring case and punctuation, equals
+either the card's name or its `ref` — `DJ for the Day.png`, `dj-for-the-day.jpg`
+and `C1.png` all work. See `seed/images/README.md` for the full list.
 
-A failed download never aborts the import: the deck works without art, and any
-card can have art uploaded later from the card catalog page.
+**Committing the files is not enough on its own.** The app serves art from
+object storage keyed by the database, so the importer has to process them once:
+
+```bash
+pnpm deck:import --school <school-id>
+```
+
+Re-running is safe — cards that already have art are skipped, so you can add a
+few images at a time.
+
+**2. Upload from the app.** The card catalog page has an *Add art* / *Replace
+art* button per card. This is the route for art that changes later, and the only
+route educators have without repository access.
+
+**3. Let the importer download from `source_url`.** Each card's Drive link is
+tried when no local file matches. Drive throttles, blocks hotlinking
+unpredictably, and returns an HTML page for files that are not publicly shared —
+the importer detects that case and reports it rather than storing a web page as
+a card image. Treat this as a convenience, not the plan.
+
+A failed image never aborts the import: the deck works without art, and every
+failure is listed with its reason.
 
 ## Where card art is stored
 

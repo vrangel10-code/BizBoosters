@@ -55,7 +55,21 @@ function directDownloadUrl(url: string): string {
     : url;
 }
 
-async function findLocalImage(ref: string): Promise<Buffer | null> {
+/**
+ * Finds the source art for a card in `seed/images/`.
+ *
+ * Matching is forgiving on purpose: whoever exports the art is far more likely
+ * to save "DJ for the Day.png" than "C1.png", and being strict here just makes
+ * the import silently skip everything. A file matches if its name, ignoring
+ * case, punctuation and extension, equals either the card's `ref` or its name.
+ */
+const normalizeFileStem = (value: string): string =>
+  value
+    .replace(/\.[^.]+$/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+
+async function findLocalImage(ref: string, cardName: string): Promise<Buffer | null> {
   const dir = join(process.cwd(), 'seed', 'images');
   let entries: string[];
   try {
@@ -63,7 +77,11 @@ async function findLocalImage(ref: string): Promise<Buffer | null> {
   } catch {
     return null;
   }
-  const match = entries.find((name) => name.replace(/\.[^.]+$/, '').toLowerCase() === ref.toLowerCase());
+
+  const wanted = new Set([normalizeFileStem(ref), normalizeFileStem(cardName)]);
+  const match = entries.find(
+    (name) => !name.startsWith('.') && wanted.has(normalizeFileStem(name)),
+  );
   return match ? readFile(join(dir, match)) : null;
 }
 
@@ -133,10 +151,14 @@ async function main(): Promise<void> {
     if (skipImages || card.imageKey) continue;
 
     try {
-      const local = await findLocalImage(entry.ref);
+      const local = await findLocalImage(entry.ref, entry.name);
       const bytes = local ?? (entry.source_url ? await fetchImage(entry.source_url) : null);
       if (!bytes) {
-        imageFailures.push({ ref: entry.ref, name: entry.name, reason: 'no local file or source URL' });
+          imageFailures.push({
+          ref: entry.ref,
+          name: entry.name,
+          reason: `no file in seed/images/ matching "${entry.ref}" or "${entry.name}"`,
+        });
         continue;
       }
       const processed = await processCardImage(card.id, bytes);
@@ -190,8 +212,9 @@ async function main(): Promise<void> {
       console.warn(`  ✗ ${failure.ref.padEnd(4)} ${failure.name} — ${failure.reason}`);
     }
     console.warn(
-      '\nThe deck works without art. To add it: save each image as ' +
-        'seed/images/<ref>.png (C1.png, U3.png …) and re-run, or upload from the card page.',
+      '\nThe deck works without art. To add it, save each image in seed/images/ ' +
+        'named after either the card (\'DJ for the Day.png\') or its ref (\'C1.png\'), ' +
+        'then re-run. Or upload it from the card catalog page in the app.',
     );
   }
 }
