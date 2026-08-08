@@ -18,6 +18,12 @@ export type ErrorCode =
   | 'email_in_use'
   | 'login_id_in_use'
   | 'rate_limited'
+  | 'room_archived'
+  | 'version_conflict'
+  | 'insufficient_tokens'
+  | 'already_enrolled'
+  | 'already_undone'
+  | 'undo_window_expired'
   | 'internal_error';
 
 const STATUS: Record<ErrorCode, number> = {
@@ -36,6 +42,12 @@ const STATUS: Record<ErrorCode, number> = {
   email_in_use: 409,
   login_id_in_use: 409,
   rate_limited: 429,
+  room_archived: 409,
+  version_conflict: 409,
+  insufficient_tokens: 409,
+  already_enrolled: 409,
+  already_undone: 409,
+  undo_window_expired: 409,
   internal_error: 500,
 };
 

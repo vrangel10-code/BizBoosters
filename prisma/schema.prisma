@@ -31,6 +31,7 @@ model School {
 
   users       User[]
   invitations EducatorInvitation[]
+  rooms       Room[]
 
   @@map("schools")
 }
@@ -67,6 +68,11 @@ model User {
   invitationDddress EducatorInvitation[] @relation("AcceptedBy")
   auditActed        AuditLog[]           @relation("AuditActor")
   auditTargeted     AuditLog[]           @relation("AuditTarget")
+  roomsCreated      Room[]               @relation("RoomCreator")
+  roomEducator      RoomEducator[]
+  enrollments       Enrollment[]
+  tokenActions      TokenTransaction[]
+  activityActed     ActivityEvent[]
 
   @@index([schoolId, role])
   @@map("users")
@@ -138,4 +144,151 @@ model RateLimit {
 
   @@index([windowStart])
   @@map("rate_limits")
+}
+
+// ─── Phase 1: rooms, enrolments, tokens, activity ──────────────────────────
+
+enum RoomStatus {
+  draft
+  active
+  archived
+}
+
+enum RoomEducatorRole {
+  owner
+  assistant
+}
+
+enum EnrollmentStatus {
+  active
+  removed
+}
+
+enum TokenReason {
+  educator_award
+  educator_adjustment
+  draw_spend
+  draw_refund
+  system_correction
+}
+
+model Room {
+  id       String     @id @default(uuid()) @db.Uuid
+  schoolId String     @map("school_id") @db.Uuid
+  name     String
+  status   RoomStatus @default(active)
+
+  // Economy rules. Deck-specific settings arrive with the deck in phase 2.
+  drawCostTokens     Int     @default(20) @map("draw_cost_tokens")
+  tradesEnabled      Boolean @default(true) @map("trades_enabled")
+  tradeRatio         Int     @default(3) @map("trade_ratio")
+  studentsSeeOdds    Boolean @default(true) @map("students_see_odds")
+  lowStockThreshold  Int     @default(20) @map("low_stock_threshold")
+  lowStockAlerted    Boolean @default(false) @map("low_stock_alerted")
+
+  /// Optimistic concurrency for settings edits: two educators editing the same
+  /// room must not silently overwrite each other.
+  version Int @default(1)
+
+  createdBy  String    @map("created_by") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  archivedAt DateTime? @map("archived_at")
+
+  school      School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  creator     User            @relation("RoomCreator", fields: [createdBy], references: [id])
+  educators   RoomEducator[]
+  enrollments Enrollment[]
+  activity    ActivityEvent[]
+
+  @@index([schoolId, status])
+  @@map("rooms")
+}
+
+model RoomEducator {
+  roomId String           @map("room_id") @db.Uuid
+  userId String           @map("user_id") @db.Uuid
+  role   RoomEducatorRole @default(assistant)
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([roomId, userId])
+  @@index([userId])
+  @@map("room_educators")
+}
+
+/// One row per (student, room). Tokens hang off THIS, not off the user — a
+/// student in three rooms has three independent balances.
+model Enrollment {
+  id        String           @id @default(uuid()) @db.Uuid
+  roomId    String           @map("room_id") @db.Uuid
+  studentId String           @map("student_id") @db.Uuid
+  status    EnrollmentStatus @default(active)
+
+  /// Cache of SUM(token_transactions.delta), maintained in the same
+  /// transaction as the ledger row. A CHECK constraint keeps it non-negative.
+  tokenBalance Int @default(0) @map("token_balance")
+
+  seatLabel String?   @map("seat_label")
+  joinedAt  DateTime  @default(now()) @map("joined_at")
+  removedAt DateTime? @map("removed_at")
+
+  room         Room               @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  student      User               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  transactions TokenTransaction[]
+  activity     ActivityEvent[]
+
+  @@unique([roomId, studentId])
+  @@index([studentId, status])
+  @@map("enrollments")
+}
+
+/// Append-only. Never updated, never deleted — an award that was wrong is
+/// corrected by a compensating row, so the history stays answerable.
+model TokenTransaction {
+  id           String      @id @default(uuid()) @db.Uuid
+  enrollmentId String      @map("enrollment_id") @db.Uuid
+  delta        Int
+  balanceAfter Int         @map("balance_after")
+  reason       TokenReason
+  note         String?
+  actorUserId  String?     @map("actor_user_id") @db.Uuid
+
+  /// Set on the compensating row that reverses this one, and on the original
+  /// once reversed — so neither can be undone twice.
+  reversesId  String?  @unique @map("reverses_id") @db.Uuid
+  batchId     String?  @map("batch_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  enrollment Enrollment        @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  actor      User?             @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  reverses   TokenTransaction? @relation("Reversal", fields: [reversesId], references: [id])
+  reversedBy TokenTransaction? @relation("Reversal")
+
+  @@index([enrollmentId, createdAt])
+  @@map("token_transactions")
+}
+
+/// The room's shared history. Every mutation writes exactly one row per
+/// affected student; see docs/MECHANICS.md §7 for the event vocabulary.
+model ActivityEvent {
+  id                  String  @id @default(uuid()) @db.Uuid
+  roomId              String  @map("room_id") @db.Uuid
+  type                String
+  actorUserId         String? @map("actor_user_id") @db.Uuid
+  subjectEnrollmentId String? @map("subject_enrollment_id") @db.Uuid
+
+  /// Snapshots the human-readable detail (card names, amounts, notes) so a
+  /// later rename or edit never rewrites what the log said happened.
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  room     Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  actor    User?       @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  subject  Enrollment? @relation(fields: [subjectEnrollmentId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+  @@index([subjectEnrollmentId, createdAt])
+  @@map("activity_events")
 }

@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { readSessionCookie, resolveSession } from '@/server/auth/session';
+import { listRoomsForStudent } from '@/server/services/rooms';
 import SignOutButton from '@/components/sign-out-button';
 
 export const dynamic = 'force-dynamic';
 
-/** Phase 0 placeholder. Rooms, tokens, inventory and the draw arrive next. */
 export default async function StudentHomePage() {
   const session = await resolveSession(await readSessionCookie());
 
@@ -12,21 +13,45 @@ export default async function StudentHomePage() {
   if (session.user.mustChangePassword) redirect('/change-password');
   if (session.user.role !== 'student') redirect('/dashboard');
 
+  const rooms = await listRoomsForStudent(session.user);
+
   return (
-    <main className="shell">
-      <h1>Hi, {session.user.displayName}</h1>
-      <p className="lede">
-        Your password is set. Your teacher has not added you to a room yet — once they do, your
-        tokens and cards will show up here.
-      </p>
-      <div className="panel">
-        <p style={{ margin: 0 }}>
-          Login ID <code>{session.user.loginId}</code>
-        </p>
-      </div>
-      <div style={{ marginTop: '1.5rem' }}>
+    <main className="shell wide">
+      <div className="page-head">
+        <div>
+          <h1>Hi, {session.user.displayName}</h1>
+          <p className="lede">
+            {rooms.length === 0
+              ? 'Your teacher has not added you to a room yet.'
+              : `You are in ${rooms.length} room${rooms.length === 1 ? '' : 's'}.`}
+          </p>
+        </div>
         <SignOutButton />
       </div>
+
+      {rooms.length === 0 ? (
+        <div className="panel">
+          <p className="hint" style={{ margin: 0 }}>
+            Once your teacher adds you to a room, your tokens and cards will show up here. Your
+            login ID is <code>{session.user.loginId}</code>.
+          </p>
+        </div>
+      ) : (
+        <div className="room-grid">
+          {rooms.map((room) => (
+            <Link key={room.room_id} href={`/rooms/${room.room_id}/history`} className="room-card">
+              <h2>{room.name}</h2>
+              <p className="balance">{room.token_balance}</p>
+              <p className="hint" style={{ margin: 0 }}>
+                tokens ·{' '}
+                {room.draws_affordable > 0
+                  ? `enough for ${room.draws_affordable} draw${room.draws_affordable === 1 ? '' : 's'}`
+                  : `${room.draw_cost_tokens - room.token_balance} more for a draw`}
+              </p>
+            </Link>
+          ))}
+        </div>
+      )}
     </main>
   );
 }

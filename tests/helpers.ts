@@ -9,6 +9,7 @@ export const prisma = new PrismaClient();
 export async function resetDatabase(): Promise<void> {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      activity_events, token_transactions, enrollments, room_educators, rooms,
       audit_log, sessions, educator_invitations, rate_limits, users, schools
     RESTART IDENTITY CASCADE
   `);

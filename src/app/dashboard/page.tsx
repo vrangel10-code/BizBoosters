@@ -1,14 +1,12 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { readSessionCookie, resolveSession } from '@/server/auth/session';
-import { listStudents } from '@/server/services/students';
+import { listRoomsForEducator } from '@/server/services/rooms';
 import SignOutButton from '@/components/sign-out-button';
+import CreateRoomForm from '@/components/create-room-form';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * Phase 0 placeholder: enough to prove the educator can sign in and manage
- * student credentials. Rooms, tokens and decks land in phases 1–2.
- */
 export default async function DashboardPage() {
   const session = await resolveSession(await readSessionCookie());
 
@@ -16,51 +14,56 @@ export default async function DashboardPage() {
   if (session.user.mustChangePassword) redirect('/change-password');
   if (session.user.role === 'student') redirect('/home');
 
-  const students = session.user.schoolId ? await listStudents(session.user.schoolId) : [];
+  const rooms = await listRoomsForEducator(session.user);
 
   return (
     <main className="shell wide">
-      <h1>Welcome, {session.user.displayName}</h1>
-      <p className="lede">
-        Signed in as {session.user.role.replace('_', ' ')}. Rooms and card decks arrive in the next
-        phase.
-      </p>
+      <div className="page-head">
+        <div>
+          <h1>Your rooms</h1>
+          <p className="lede">Signed in as {session.user.displayName}.</p>
+        </div>
+        <SignOutButton />
+      </div>
 
-      <div className="panel">
-        <h2 style={{ fontSize: '1.125rem', marginTop: 0 }}>Students ({students.length})</h2>
-        {students.length === 0 ? (
+      {rooms.length === 0 ? (
+        <div className="panel">
           <p className="hint" style={{ margin: 0 }}>
-            No students yet. Create them via <code>POST /api/v1/students</code>; the roster UI
-            arrives with rooms in phase 1.
+            No rooms yet. Create one below, then add your students.
           </p>
-        ) : (
+        </div>
+      ) : (
+        <div className="panel">
           <table>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Login ID</th>
-                <th>First login</th>
-                <th>Last seen</th>
+                <th>Room</th>
+                <th>Students</th>
+                <th>Draw cost</th>
+                <th />
               </tr>
             </thead>
             <tbody>
-              {students.map((student) => (
-                <tr key={student.id}>
-                  <td>{student.displayName}</td>
+              {rooms.map((room) => (
+                <tr key={room.id}>
                   <td>
-                    <code>{student.loginId}</code>
+                    {room.name}
+                    {room.status === 'archived' ? <span className="tag">archived</span> : null}
                   </td>
-                  <td>{student.mustChangePassword ? 'Password not yet set' : 'Done'}</td>
-                  <td>{student.lastLoginAt ? student.lastLoginAt.toUTCString() : '—'}</td>
+                  <td>{room.student_count}</td>
+                  <td>{room.draw_cost_tokens} tokens</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <Link href={`/rooms/${room.id}`}>Open</Link>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
       <div style={{ marginTop: '1.5rem' }}>
-        <SignOutButton />
+        <CreateRoomForm />
       </div>
     </main>
   );

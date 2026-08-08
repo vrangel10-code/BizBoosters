@@ -17,10 +17,19 @@ thing most likely to be got wrong by accident.
 ### Awarding
 
 Educators award from the roster screen: select one student, several, or the
-whole room; enter an amount and an optional reason. A bulk award writes one
-`token_transactions` row **per student** (never one shared row) so that each
-student's history is complete on its own, plus one `activity_events` row for the
-room.
+whole room; enter an amount and an optional reason.
+
+A bulk award writes one `token_transactions` row **and** one `activity_events`
+row **per student** — never one shared row of either. Each student's ledger and
+history has to be complete on its own, and the student history view filters on
+`subject_enrollment_id`, so a single room-level event would be invisible to
+exactly the people it is about.
+
+To stop 30 rows flooding the educator's room log, every row in one award carries
+the same `batch_id` in its payload, and the room log collapses a batch into a
+single line — *"Awarded 40 tokens to 30 students — great pitch in week 4"* —
+expandable to the individual rows. Grouping is a presentation concern; the
+underlying per-student records stay separate.
 
 ### "Editing tokens achieved"
 

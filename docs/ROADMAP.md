@@ -22,7 +22,7 @@ counters are useless on serverless), DB CHECK constraints enforcing identifier
 normalization and per-role identity shape, and route-level tests that drive the
 real handlers so the first-login gate is proven rather than asserted.
 
-## Phase 1 — Rooms, rosters, tokens (≈1.5 weeks)
+## Phase 1 — Rooms, rosters, tokens ✅ complete
 - `rooms`, `room_educators`, `enrollments`, `token_transactions`,
   `activity_events`.
 - Educator: create room, add students, CSV import with generated credentials,
@@ -30,7 +30,14 @@ real handlers so the first-login gate is proven rather than asserted.
 - Student: room picker, token balance, personal history.
 
 **Done when:** an educator awards 40 tokens to a class of 30 and every student
-sees it in their own history with the reason attached.
+sees it in their own history with the reason attached. ✅ Verified end to end;
+199 tests green.
+
+Spec correction found while building: MECHANICS said a bulk award writes one
+room-level activity event. The student history filters on
+`subject_enrollment_id`, so that event would have been invisible to every
+student it was about — exactly the acceptance case. It now writes one event per
+student, sharing a `batch_id` so the educator's log still collapses to one line.
 
 ## Phase 2 — Cards and decks (≈1.5 weeks)
 - `cards`, `room_cards`, `room_rarities`; image upload to R2 + derivatives.
