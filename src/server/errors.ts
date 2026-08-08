@@ -1,0 +1,60 @@
+/**
+ * Every failure the API can return, as a machine-readable code. Clients switch
+ * on `code`, never on `message` — see docs/API.md.
+ */
+export type ErrorCode =
+  | 'invalid_credentials'
+  | 'account_locked'
+  | 'account_inactive'
+  | 'password_change_required'
+  | 'unauthenticated'
+  | 'forbidden'
+  | 'not_found'
+  | 'validation_failed'
+  | 'weak_password'
+  | 'invitation_invalid'
+  | 'invitation_expired'
+  | 'invitation_already_accepted'
+  | 'email_in_use'
+  | 'login_id_in_use'
+  | 'rate_limited'
+  | 'internal_error';
+
+const STATUS: Record<ErrorCode, number> = {
+  invalid_credentials: 401,
+  account_locked: 423,
+  account_inactive: 403,
+  password_change_required: 403,
+  unauthenticated: 401,
+  forbidden: 403,
+  not_found: 404,
+  validation_failed: 422,
+  weak_password: 422,
+  invitation_invalid: 404,
+  invitation_expired: 410,
+  invitation_already_accepted: 409,
+  email_in_use: 409,
+  login_id_in_use: 409,
+  rate_limited: 429,
+  internal_error: 500,
+};
+
+export class ApiError extends Error {
+  readonly code: ErrorCode;
+  readonly status: number;
+  readonly details: Record<string, unknown>;
+
+  constructor(code: ErrorCode, message: string, details: Record<string, unknown> = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.status = STATUS[code];
+    this.details = details;
+  }
+}
+
+export const apiError = (
+  code: ErrorCode,
+  message: string,
+  details?: Record<string, unknown>,
+) => new ApiError(code, message, details);

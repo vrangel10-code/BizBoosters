@@ -3,7 +3,7 @@
 Six phases. Each ends with something demonstrable, and the order is chosen so
 the riskiest thing — the shared-deck draw transaction — is proven early.
 
-## Phase 0 — Foundations (≈1 week)
+## Phase 0 — Foundations ✅ complete
 - Next.js + TypeScript + Prisma + Postgres, Docker Compose for local dev.
 - Migrations for `schools`, `users`, `sessions`.
 - Session auth: educator email/password, student login-ID/password, forced
@@ -15,7 +15,12 @@ the riskiest thing — the shared-deck draw transaction — is proven early.
 
 **Done when:** an admin invites an educator by email, that educator redeems the
 link and sets a password, and a student they create is forced to change theirs
-before reaching anything else.
+before reaching anything else. ✅ Verified end to end; 67 tests green.
+
+Delivered beyond the original list: a Postgres-backed rate limiter (in-memory
+counters are useless on serverless), DB CHECK constraints enforcing identifier
+normalization and per-role identity shape, and route-level tests that drive the
+real handlers so the first-login gate is proven rather than asserted.
 
 ## Phase 1 — Rooms, rosters, tokens (≈1.5 weeks)
 - `rooms`, `room_educators`, `enrollments`, `token_transactions`,

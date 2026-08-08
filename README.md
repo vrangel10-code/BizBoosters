@@ -4,9 +4,22 @@ A classroom trading-card / token-economy platform. Educators award tokens for
 classroom achievement; students spend tokens to draw cards from a shared,
 finite room deck; cards are redeemed for real-world classroom perks.
 
-This repository currently contains the **design specification** for turning the
-single-file prototype (`prototype/lootbox-prototype.html`) into a deployable
-multi-user web application.
+**Status: phase 0 complete** — identity, sessions, invitations and the
+first-login flow are built and tested. Rooms, tokens, decks and the draw arrive
+in phases 1–3. See [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Quick start
+
+```bash
+cp .env.example .env
+docker compose up -d
+pnpm install && pnpm prisma migrate deploy
+pnpm admin:create --school "Your School" --email you@school.edu --name "Your Name"
+pnpm dev
+```
+
+Full instructions, including how to read invitation emails in development, are
+in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
 ## Documents
 
@@ -16,8 +29,23 @@ multi-user web application.
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Full Postgres schema, every table and why it exists |
 | [docs/MECHANICS.md](docs/MECHANICS.md) | Draw algorithm, token economy, card lifecycle, trades, concurrency |
 | [docs/API.md](docs/API.md) | REST surface, realtime events, error contracts |
-| [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md) | Decisions that must be made before build, and gaps in the current brief |
+| [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md) | Every design decision made, with its reasoning |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Phased build plan |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | Setup, migrations, first admin, operational tasks |
+
+## What is built (phase 0)
+
+- **Sessions** — opaque tokens, only their SHA-256 hash stored, server-side
+  revocation, sliding expiry: 2 hours for students, 12 for educators.
+- **Educator invitations** — single-use, 7-day, revocable, token rotated on
+  resend. No signup route exists for any role.
+- **Student accounts** — generated login IDs and one-time default passwords,
+  shown to the educator once, with a first-login password change enforced in
+  `requireAuth()` rather than in the UI.
+- **Argon2id** password hashing at the OWASP baseline, per-account lockout and
+  Postgres-backed rate limiting.
+- **67 tests** against a real Postgres, including the concurrency case where one
+  invitation link is submitted five times at once.
 
 ## What the prototype does today
 

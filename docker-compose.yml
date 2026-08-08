@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bizboosters-db
+    environment:
+      POSTGRES_USER: bizboosters
+      POSTGRES_PASSWORD: bizboosters
+      POSTGRES_DB: bizboosters
+    ports:
+      - '5432:5432'
+    volumes:
+      - bizboosters-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U bizboosters']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  bizboosters-pgdata:

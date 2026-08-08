@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: bizboosters
+          POSTGRES_PASSWORD: bizboosters
+          POSTGRES_DB: bizboosters_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U bizboosters"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://bizboosters:bizboosters@localhost:5432/bizboosters_test?schema=public
+      SHADOW_DATABASE_URL: postgresql://bizboosters:bizboosters@localhost:5432/bizboosters_shadow?schema=public
+      SESSION_COOKIE_NAME: bb_session
+      APP_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm prisma generate
+
+      # Prisma resets the shadow database while diffing, so it must be a
+      # database of its own — never the one the tests are about to use.
+      - name: Create shadow database
+        run: PGPASSWORD=bizboosters psql -h localhost -U bizboosters -d bizboosters_test
+          -c 'CREATE DATABASE bizboosters_shadow;'
+
+      # Fails when the committed migrations no longer reproduce schema.prisma,
+      # which is what happens if someone edits the schema and forgets to
+      # generate a migration. A drifted schema is discovered here rather than
+      # halfway through a deploy.
+      - name: Migrations reproduce the schema
+        run: pnpm prisma migrate diff
+          --from-migrations ./prisma/migrations
+          --to-schema-datamodel ./prisma/schema.prisma
+          --shadow-database-url "$SHADOW_DATABASE_URL"
+          --exit-code
+
+      - run: pnpm typecheck
+
+      - run: pnpm lint
+
+      - run: pnpm test
+
+      - run: pnpm build

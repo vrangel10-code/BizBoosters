@@ -1,0 +1,141 @@
+// BizBoosters — Phase 0 schema (identity only).
+// Rooms, cards, decks, inventory and the token ledger arrive in phases 1–3;
+// see docs/DATA-MODEL.md for the full target schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  student
+  educator
+  school_admin
+  super_admin
+}
+
+enum InvitationRole {
+  educator
+  school_admin
+}
+
+model School {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  timezone  String   @default("UTC")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  users       User[]
+  invitations EducatorInvitation[]
+
+  @@map("schools")
+}
+
+model User {
+  id       String   @id @default(uuid()) @db.Uuid
+  schoolId String?  @map("school_id") @db.Uuid
+  role     UserRole
+
+  displayName String @map("display_name")
+
+  /// Educators only. Stored lowercase — see normalizeIdentifier(); a CHECK
+  /// constraint in the migration rejects anything else, so no code path can
+  /// bypass normalization and create a case-duplicate account.
+  email String? @unique
+
+  /// Students only. Same lowercase rule.
+  loginId String? @unique @map("login_id")
+
+  passwordHash       String  @map("password_hash")
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  isActive           Boolean @default(true) @map("is_active")
+
+  failedLoginCount Int       @default(0) @map("failed_login_count")
+  lockedUntil      DateTime? @map("locked_until")
+  lastLoginAt      DateTime? @map("last_login_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school            School?              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  sessions          Session[]
+  invitationsSent   EducatorInvitation[] @relation("InvitedBy")
+  invitationDddress EducatorInvitation[] @relation("AcceptedBy")
+  auditActed        AuditLog[]           @relation("AuditActor")
+  auditTargeted     AuditLog[]           @relation("AuditTarget")
+
+  @@index([schoolId, role])
+  @@map("users")
+}
+
+model Session {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  /// Rolling-expiry bookkeeping: refreshed on activity, but only once the
+  /// session is far enough through its window to be worth a write.
+  lastUsedAt DateTime @default(now()) @map("last_used_at")
+  revokedAt DateTime? @map("revoked_at")
+  userAgent String?   @map("user_agent")
+  ip        String?
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model EducatorInvitation {
+  id         String         @id @default(uuid()) @db.Uuid
+  schoolId   String         @map("school_id") @db.Uuid
+  email      String
+  role       InvitationRole @default(educator)
+  tokenHash  String         @unique @map("token_hash")
+  invitedBy  String         @map("invited_by") @db.Uuid
+  expiresAt  DateTime       @map("expires_at")
+  acceptedAt DateTime?      @map("accepted_at")
+  acceptedBy String?        @map("accepted_by") @db.Uuid
+  revokedAt  DateTime?      @map("revoked_at")
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  inviter  User   @relation("InvitedBy", fields: [invitedBy], references: [id])
+  acceptor User?  @relation("AcceptedBy", fields: [acceptedBy], references: [id])
+
+  @@index([schoolId, email])
+  @@map("educator_invitations")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  actorUserId  String?  @map("actor_user_id") @db.Uuid
+  targetUserId String?  @map("target_user_id") @db.Uuid
+  action       String
+  payload      Json     @default("{}")
+  ip           String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  actor  User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  target User? @relation("AuditTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([targetUserId, createdAt])
+  @@map("audit_log")
+}
+
+/// Fixed-window rate limiting. In Postgres rather than in memory so it still
+/// works when the app runs as more than one instance (or as serverless
+/// functions, where in-process counters are worthless).
+model RateLimit {
+  key         String   @id
+  windowStart DateTime @map("window_start")
+  count       Int      @default(0)
+
+  @@index([windowStart])
+  @@map("rate_limits")
+}
