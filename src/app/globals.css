@@ -343,3 +343,56 @@ select {
 
 .page-nav { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
 .page-nav button { width: auto; }
+
+/* ─── Phase 3: the draw ────────────────────────────────────────────────────── */
+
+.draw-stage { min-height: 22rem; display: flex; align-items: center; justify-content: center; }
+.chest-area { display: flex; flex-direction: column; align-items: center; gap: 1rem; width: 100%; }
+.chest-area button { max-width: 18rem; }
+.draw-balance { margin: 0; color: var(--muted); font-size: 0.9375rem; }
+.draw-balance strong { color: var(--text); font-size: 1.25rem; }
+
+@keyframes chest-shake {
+  0%   { transform: translate(1px, 1px) rotate(0deg); }
+  25%  { transform: translate(-3px, 0) rotate(1deg); }
+  50%  { transform: translate(-1px, 2px) rotate(-1deg); }
+  75%  { transform: translate(3px, 1px) rotate(0deg); }
+  100% { transform: translate(1px, -2px) rotate(-1deg); }
+}
+.chest.shaking { animation: chest-shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) infinite both; }
+
+@keyframes pop-in {
+  0%   { transform: scale(0.5) translateY(40px); opacity: 0; }
+  70%  { transform: scale(1.08) translateY(-8px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+@keyframes legendary-glow {
+  0%, 100% { box-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
+  50%      { box-shadow: 0 0 30px rgba(255, 215, 0, 1), 0 0 60px rgba(255, 255, 255, 0.6); }
+}
+
+.reveal { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; width: 100%; }
+.reveal-rarity {
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.9375rem;
+}
+.reveal-card {
+  width: 11rem;
+  animation: pop-in 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+.reveal-card.legendary-glow { animation: pop-in 0.6s both, legendary-glow 2s 0.6s infinite; }
+.reveal-name { margin: 0.25rem 0 0; font-size: 1.125rem; font-weight: 700; }
+.reveal-effect { margin: 0; text-align: center; }
+.reveal button { max-width: 12rem; margin-top: 0.5rem; }
+
+/* Motion is decoration here — the outcome is already settled server-side, so
+   removing it costs nothing but a beat. */
+@media (prefers-reduced-motion: reduce) {
+  .chest.shaking { animation: none; }
+  .reveal-card,
+  .reveal-card.legendary-glow { animation: none; }
+}

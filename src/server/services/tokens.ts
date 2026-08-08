@@ -296,6 +296,9 @@ export async function undoTokenTransaction(
   });
 }
 
+// Reconciliation lives in ./reconciliation.ts — one implementation, used by the
+// nightly job and the tests alike.
+
 export async function listTokenTransactions(enrollmentId: string, limit = 100) {
   return prisma.tokenTransaction.findMany({
     where: { enrollmentId },
@@ -306,31 +309,4 @@ export async function listTokenTransactions(enrollmentId: string, limit = 100) {
       reversedBy: { select: { id: true } },
     },
   });
-}
-
-/**
- * The reconciliation check: the cached balance must equal the sum of the
- * ledger. Any drift is a transaction-boundary bug, and it is much cheaper to
- * find the same night than at the end of term.
- */
-export async function findBalanceDrift(): Promise<
-  { enrollmentId: string; cached: number; ledger: number }[]
-> {
-  const rows = await prisma.$queryRaw<
-    { enrollment_id: string; cached: number; ledger: number }[]
-  >`
-    SELECT e.id AS enrollment_id,
-           e.token_balance AS cached,
-           COALESCE(SUM(t.delta), 0)::int AS ledger
-      FROM enrollments e
-      LEFT JOIN token_transactions t ON t.enrollment_id = e.id
-     GROUP BY e.id, e.token_balance
-    HAVING e.token_balance <> COALESCE(SUM(t.delta), 0)
-  `;
-
-  return rows.map((row) => ({
-    enrollmentId: row.enrollment_id,
-    cached: row.cached,
-    ledger: row.ledger,
-  }));
 }

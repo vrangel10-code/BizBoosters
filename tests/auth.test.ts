@@ -137,6 +137,45 @@ describe('login', () => {
     );
   });
 
+  it('lets a whole class sign in from one shared school IP', async () => {
+    // Regression: schools sit behind one public IP, so 30 successful sign-ins
+    // from one address is the product working, not an attack. A limit that
+    // counted every attempt locked out the 31st student — found by the phase-3
+    // acceptance run, where exactly that happened.
+    const students = await Promise.all(
+      Array.from({ length: 40 }, (_, i) =>
+        seedUser({
+          schoolId: school.id,
+          role: 'student',
+          loginId: `student-${String(i).padStart(3, '0')}`,
+          password: 'maple-otter-473',
+        }),
+      ),
+    );
+
+    const results = await Promise.allSettled(
+      students.map((student) =>
+        login({ identifier: student.loginId!, password: 'maple-otter-473', ip: '198.51.100.1' }),
+      ),
+    );
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(40);
+  });
+
+  it('still throttles repeated FAILURES from one shared IP', async () => {
+    // The same address failing over and over is the case worth stopping, and
+    // it is unaffected by how many students legitimately signed in first.
+    const codes: string[] = [];
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      try {
+        await login({ identifier: `ghost-${attempt}`, password: 'wrong', ip: '198.51.100.2' });
+      } catch (error) {
+        if (error instanceof ApiError) codes.push(error.code);
+      }
+    }
+    expect(codes).toContain('rate_limited');
+  });
+
   it('throttles grinding against an identifier that has no account to lock', async () => {
     // Lockout cannot protect an identifier that does not exist — there is no
     // row to set locked_until on — so the per-identifier rate limit is the only

@@ -287,14 +287,24 @@ export async function resetDeck(
   }
 
   const result = await prisma.$transaction(async (tx) => {
+    // Same room lock as the draw: this is a deck mutation, and a draw landing
+    // mid-reset would leave a copy owned by nobody.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${room.id}, 0))`;
+
     const before = await tx.roomCard.findMany({ where: { roomId: room.id } });
     const copiesReturned = before.reduce(
       (sum, row) => sum + (row.copiesTotal - row.copiesRemaining),
       0,
     );
 
-    // Phase 3 adds the other half of this: revoking every `owned`
-    // inventory_item in the room, inside this same transaction.
+    // Both halves, in one transaction. Refilling alone would mint the held
+    // copies from nothing; clearing hands alone would strand them. Together
+    // they land on held = 0, remaining = total.
+    const revoked = await tx.inventoryItem.updateMany({
+      where: { roomId: room.id, state: 'owned' },
+      data: { state: 'revoked', returnedAt: new Date() },
+    });
+
     const refilled = await tx.$executeRaw`
       UPDATE room_cards SET copies_remaining = copies_total WHERE room_id = ${room.id}::uuid
     `;
@@ -304,7 +314,11 @@ export async function resetDeck(
         roomId: room.id,
         type: 'pool.reset',
         actorUserId: actor.id,
-        payload: { cards_refilled: refilled, copies_returned: copiesReturned },
+        payload: {
+          cards_refilled: refilled,
+          copies_returned: copiesReturned,
+          items_revoked: revoked.count,
+        },
       },
       tx,
     );

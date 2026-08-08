@@ -204,6 +204,8 @@ model Room {
   activity    ActivityEvent[]
   roomCards   RoomCard[]
   rarities    RoomRarity[]
+  inventory   InventoryItem[]
+  draws       Draw[]
 
   @@index([schoolId, status])
   @@map("rooms")
@@ -242,6 +244,8 @@ model Enrollment {
   student      User               @relation(fields: [studentId], references: [id], onDelete: Cascade)
   transactions TokenTransaction[]
   activity     ActivityEvent[]
+  inventory    InventoryItem[]
+  draws        Draw[]
 
   @@unique([roomId, studentId])
   @@index([studentId, status])
@@ -263,6 +267,13 @@ model TokenTransaction {
   /// once reversed — so neither can be undone twice.
   reversesId  String?  @unique @map("reverses_id") @db.Uuid
   batchId     String?  @map("batch_id") @db.Uuid
+
+  /// What caused this movement, when it was not an educator action — e.g. the
+  /// draw that spent the tokens. Loose reference on purpose: the ledger must
+  /// outlive whatever it points at.
+  relatedType String?  @map("related_type")
+  relatedId   String?  @map("related_id") @db.Uuid
+
   createdAt   DateTime @default(now()) @map("created_at")
 
   enrollment Enrollment        @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
@@ -335,9 +346,11 @@ model Card {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  school    School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  creator   User       @relation("CardCreator", fields: [createdBy], references: [id])
+  school    School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  creator   User            @relation("CardCreator", fields: [createdBy], references: [id])
   roomCards RoomCard[]
+  inventory InventoryItem[]
+  draws     Draw[]
 
   @@unique([schoolId, name])
   @@index([schoolId, rarity])
@@ -377,4 +390,84 @@ model RoomRarity {
 
   @@id([roomId, code])
   @@map("room_rarities")
+}
+
+// ─── Phase 3: draws and inventory ──────────────────────────────────────────
+
+/// Only `owned` holds a copy out of the deck. The rest are terminal history
+/// rows whose copy is already back in circulation — see docs/MECHANICS.md §3.
+enum ItemState {
+  owned
+  used
+  returned
+  revoked
+}
+
+enum Acquisition {
+  draw
+  trade
+  educator_grant
+}
+
+enum DrawKind {
+  token_draw
+  trade_upgrade
+}
+
+/// One row per copy a student has held. The UI stacks by card for display.
+model InventoryItem {
+  id           String @id @default(uuid()) @db.Uuid
+  enrollmentId String @map("enrollment_id") @db.Uuid
+  /// Denormalised so "how many copies are held out of this room's deck" is one
+  /// index scan rather than a join through enrollments.
+  roomId String @map("room_id") @db.Uuid
+  cardId String @map("card_id") @db.Uuid
+
+  state       ItemState   @default(owned)
+  acquiredVia Acquisition
+  acquiredAt  DateTime    @default(now()) @map("acquired_at")
+  usedAt      DateTime?   @map("used_at")
+  returnedAt  DateTime?   @map("returned_at")
+  studentNote String?     @map("student_note")
+  drawId      String?     @map("draw_id") @db.Uuid
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  room       Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  card       Card       @relation(fields: [cardId], references: [id], onDelete: Restrict)
+  draw       Draw?      @relation(fields: [drawId], references: [id])
+
+  @@index([enrollmentId, state])
+  @@index([roomId, cardId, state])
+  @@map("inventory_items")
+}
+
+model Draw {
+  id            String   @id @default(uuid()) @db.Uuid
+  roomId        String   @map("room_id") @db.Uuid
+  enrollmentId  String   @map("enrollment_id") @db.Uuid
+  kind          DrawKind @default(token_draw)
+  tokenCost     Int      @default(0) @map("token_cost")
+  resultCardId  String   @map("result_card_id") @db.Uuid
+  resultRarity  RarityCode @map("result_rarity")
+
+  /// Provenance for dispute resolution: what the deck actually looked like, and
+  /// what the roll was. "The game cheated me" has to be an answerable question.
+  poolSnapshot Json   @map("pool_snapshot")
+  rollValue    Int    @map("roll_value")
+  poolSize     Int    @map("pool_size")
+
+  /// Client-generated per button press. Makes a double-click, a retry, or a
+  /// lost response safe: the same key replays the original result instead of
+  /// charging twice.
+  idempotencyKey String   @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  room       Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  enrollment Enrollment      @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  card       Card            @relation(fields: [resultCardId], references: [id])
+  items      InventoryItem[]
+
+  @@unique([enrollmentId, idempotencyKey])
+  @@index([roomId, createdAt])
+  @@map("draws")
 }

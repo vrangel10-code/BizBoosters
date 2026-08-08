@@ -59,7 +59,7 @@ error handling and the local-file path was verified with generated
 placeholders. Art still needs importing on a machine that can reach Drive, or
 by dropping files into `seed/images/`.
 
-## Phase 3 — The draw (≈1.5 weeks) — highest risk
+## Phase 3 — The draw ✅ complete
 - `draws`, `inventory_items`, the transactional draw service, idempotency keys.
 - Student draw screen with the prototype's chest/shake/reveal animation and a
   `prefers-reduced-motion` path.
@@ -70,7 +70,13 @@ by dropping files into `seed/images/`.
 - Nightly copy-conservation and balance-reconciliation jobs.
 
 **Done when:** 30 simulated students hammer a 5-card deck and the ledger
-balances exactly.
+balances exactly. ✅ Verified against a live server: 5 winners, 25 clean
+`pool_empty`, 25 balances untouched, zero copy drift, zero balance drift.
+218 tests green.
+
+The acceptance run found a real production bug the unit tests could not: the
+per-IP login limit counted *every* attempt, so a class of 30 behind one school
+NAT locked out the 31st student. Login limits now count failures only.
 
 ## Phase 4 — Use, trades, notifications (≈1.5 weeks)
 - The item state machine and the use transaction: spend a card, return the copy

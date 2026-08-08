@@ -163,6 +163,25 @@ POST /api/v1/students/:id/reset-password
 immediately and everywhere. A password change revokes every session except the
 one performing it; a password reset revokes all of them.
 
+**Nightly reconciliation.** `GET /api/v1/cron/reconcile` runs both integrity
+checks — card-copy conservation and token-balance-vs-ledger — and returns 500
+when either drifts. Point a scheduler at it and alert on a non-200:
+
+```
+0 3 * * *  curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://…/api/v1/cron/reconcile
+```
+
+It is disabled unless `CRON_SECRET` is set, because an unauthenticated endpoint
+that enumerates every room's integrity state is not something to leave open.
+Drift is never repaired automatically: it means a transaction boundary is
+wrong, and patching the number would hide the bug that produced it.
+
+**Login rate limits** count *failures*, not attempts. Schools sit behind one
+public IP, so a whole class signing in at the start of a lesson is normal
+traffic — an attempt-counting limit locked out the 31st student in testing. The
+volume limit (600 per IP per 5 min) is only a flood guard; the failure limits
+(50 per IP, 20 per identifier) and per-account lockout do the real work.
+
 **Rate limits** live in the `rate_limits` table, not in process memory, so they
 hold across instances and on serverless. Old windows are dead weight — prune
 them periodically with `pruneRateLimits()`.
@@ -180,5 +199,7 @@ sliding on activity. Student devices are shared; there is deliberately no
 | `SESSION_COOKIE_NAME` | no | Defaults to `bb_session`. |
 | `MAIL_TRANSPORT` | no | `console` (default) or `smtp`. |
 | `SMTP_*` | when `MAIL_TRANSPORT=smtp` | Host, port, credentials, from address. |
+| `CRON_SECRET` | for the nightly check | Bearer token for `/api/v1/cron/reconcile`. Unset disables the route. |
+| `STORAGE_DIR` / `S3_*` | card art | See "Where card art is stored". |
 
 Secrets come from the environment only. Nothing sensitive belongs in the repo.

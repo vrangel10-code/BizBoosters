@@ -53,6 +53,41 @@ export async function consumeRateLimit(rule: RateLimitRule): Promise<RateLimitRe
   };
 }
 
+/**
+ * Reads the current count without incrementing it.
+ *
+ * Needed because some limits should only count *failures*: a school shares one
+ * public IP, so thirty students signing in at the start of a lesson is normal
+ * traffic, while thirty failed passwords from one address is not. Counting
+ * every attempt would throttle the classroom and let a slow attacker through
+ * on the same budget.
+ */
+export async function peekRateLimit(rule: RateLimitRule): Promise<RateLimitResult> {
+  const now = new Date();
+  const windowStart = new Date(Math.floor(now.getTime() / rule.windowMs) * rule.windowMs);
+
+  const row = await prisma.rateLimit.findUnique({ where: { key: rule.key } });
+  const count = row && row.windowStart >= windowStart ? row.count : 0;
+
+  return {
+    allowed: count < rule.limit,
+    remaining: Math.max(0, rule.limit - count),
+    retryAfterSeconds: Math.max(
+      1,
+      Math.ceil((windowStart.getTime() + rule.windowMs - now.getTime()) / 1000),
+    ),
+  };
+}
+
+export async function enforceRateLimitPeek(rule: RateLimitRule): Promise<void> {
+  const result = await peekRateLimit(rule);
+  if (!result.allowed) {
+    throw apiError('rate_limited', 'Too many failed attempts. Please wait and try again.', {
+      retry_after_seconds: result.retryAfterSeconds,
+    });
+  }
+}
+
 export async function enforceRateLimit(rule: RateLimitRule): Promise<void> {
   const result = await consumeRateLimit(rule);
   if (!result.allowed) {

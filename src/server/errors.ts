@@ -27,6 +27,9 @@ export type ErrorCode =
   | 'card_name_in_use'
   | 'rarity_locked'
   | 'confirmation_required'
+  | 'pool_empty'
+  | 'item_not_owned'
+  | 'item_state_conflict'
   | 'internal_error';
 
 const STATUS: Record<ErrorCode, number> = {
@@ -54,6 +57,9 @@ const STATUS: Record<ErrorCode, number> = {
   card_name_in_use: 409,
   rarity_locked: 409,
   confirmation_required: 422,
+  pool_empty: 409,
+  item_not_owned: 404,
+  item_state_conflict: 409,
   internal_error: 500,
 };
 

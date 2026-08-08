@@ -3,12 +3,8 @@ import type { Room, School, User } from '@prisma/client';
 import { prisma, resetDatabase, createSchool, seedUser, testIp } from './helpers';
 import { createRoom } from '../src/server/services/rooms';
 import { createAndEnrollStudent } from '../src/server/services/roster';
-import {
-  adjustTokens,
-  awardTokens,
-  findBalanceDrift,
-  undoTokenTransaction,
-} from '../src/server/services/tokens';
+import { adjustTokens, awardTokens, undoTokenTransaction } from '../src/server/services/tokens';
+import { findBalanceDrift } from '../src/server/services/reconciliation';
 import { listActivity } from '../src/server/services/activity';
 import { ApiError } from '../src/server/errors';
 

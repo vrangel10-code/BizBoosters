@@ -47,7 +47,9 @@ export default async function StudentRoomPage({
           <p className="lede">Your tokens and history in this room.</p>
         </div>
         <nav className="page-nav">
-          <Link href={`/rooms/${roomId}/cards`}>Cards in this room</Link>
+          <Link href={`/rooms/${roomId}/draw`}>Open a lootbox</Link>
+          <Link href={`/rooms/${roomId}/inventory`}>Your cards</Link>
+          <Link href={`/rooms/${roomId}/cards`}>The deck</Link>
           <Link href="/home">← All rooms</Link>
         </nav>
       </div>
@@ -60,7 +62,9 @@ export default async function StudentRoomPage({
             ? `enough for ${affordable} card draw${affordable === 1 ? '' : 's'}`
             : `${context.room.drawCostTokens - context.enrollment.tokenBalance} more tokens for your first draw`}
         </p>
-        <p className="hint">Drawing cards arrives in the next update.</p>
+        <p className="hint">
+          <Link href={`/rooms/${roomId}/draw`}>Open a lootbox →</Link>
+        </p>
       </div>
 
       <div className="panel" style={{ marginTop: '1.5rem' }}>

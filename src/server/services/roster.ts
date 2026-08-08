@@ -260,10 +260,8 @@ export async function importRoster({
 
 /**
  * Soft removal. History and the token ledger are retained — a student who left
- * still happened, and their activity is part of the room's record.
- *
- * From phase 4 this also returns any cards they hold to the deck, so a departed
- * student cannot hold the room's Legendary hostage for the rest of term.
+ * still happened, and their activity is part of the room's record — but their
+ * held cards go back to the deck.
  */
 export async function removeStudent(
   actor: User,
@@ -279,10 +277,37 @@ export async function removeStudent(
   if (enrollment.status === 'removed') return;
 
   await prisma.$transaction(async (tx) => {
+    // Deck mutation, so it takes the same room lock as the draw.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${roomId}, 0))`;
+
     await tx.enrollment.update({
       where: { id: enrollmentId },
       data: { status: 'removed', removedAt: new Date() },
     });
+
+    // Their held copies go back to the deck. Leaving them out of circulation
+    // would let a departed student hold the room's Legendary hostage for the
+    // rest of term.
+    const held = await tx.inventoryItem.findMany({
+      where: { enrollmentId, state: 'owned' },
+      select: { id: true, cardId: true },
+    });
+
+    if (held.length > 0) {
+      await tx.inventoryItem.updateMany({
+        where: { id: { in: held.map((item) => item.id) } },
+        data: { state: 'revoked', returnedAt: new Date() },
+      });
+
+      for (const item of held) {
+        await tx.$executeRaw`
+          UPDATE room_cards
+             SET copies_remaining = copies_remaining + 1
+           WHERE room_id = ${roomId}::uuid AND card_id = ${item.cardId}::uuid
+             AND copies_remaining < copies_total
+        `;
+      }
+    }
 
     await recordActivity(
       {
@@ -293,6 +318,7 @@ export async function removeStudent(
         payload: {
           student_name: enrollment.student.displayName,
           token_balance_at_removal: enrollment.tokenBalance,
+          copies_returned: held.length,
         },
       },
       tx,

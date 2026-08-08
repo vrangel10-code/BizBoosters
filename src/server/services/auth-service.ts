@@ -3,7 +3,7 @@ import { prisma } from '../db';
 import { apiError } from '../errors';
 import { equalizeTiming, hashPassword, verifyPassword, assertPasswordAllowed } from '../auth/password';
 import { looksLikeEmail, normalizeIdentifier } from '../auth/identifiers';
-import { enforceRateLimit } from '../auth/rate-limit';
+import { consumeRateLimit, enforceRateLimit, enforceRateLimitPeek } from '../auth/rate-limit';
 import { createSession, revokeAllSessionsForUser } from '../auth/session';
 import { recordAudit } from './audit';
 
@@ -39,20 +39,38 @@ export async function login({
 }: LoginInput): Promise<LoginResult> {
   const normalized = normalizeIdentifier(identifier);
 
-  // Two limits with different jobs. The per-IP limit stops one address spraying
-  // many accounts. The per-identifier limit is the backstop for identifiers that
-  // lockout cannot protect — chiefly ones that do not exist, where there is no
-  // account to lock — so it sits ABOVE MAX_FAILED_LOGINS on purpose. Set it
-  // lower and lockout becomes unreachable: the throttle would always fire first
-  // and no account would ever actually lock.
-  await enforceRateLimit({ key: `login:ip:${ip}`, limit: 30, windowMs: 5 * 60 * 1000 });
-  await enforceRateLimit({ key: `login:id:${normalized}`, limit: 20, windowMs: 5 * 60 * 1000 });
+  // Three limits, each doing a different job.
+  //
+  // The volume limit counts every attempt and exists only to blunt a flood. It
+  // is deliberately generous: a school sits behind one public IP, so a whole
+  // year group signing in at the start of a lesson all looks like one address.
+  // A tight limit here locks out real classes — which is exactly what happened
+  // when 30 students hit a limit of 30.
+  await enforceRateLimit({ key: `login:ip:${ip}`, limit: 600, windowMs: 5 * 60 * 1000 });
+
+  // The two that matter count FAILURES only, checked before the password is
+  // verified and incremented after it fails. Successful sign-ins are unbounded,
+  // because a classroom full of them is the product working.
+  const ipFailures = { key: `login:fail:ip:${ip}`, limit: 50, windowMs: 5 * 60 * 1000 };
+  const idFailures = {
+    key: `login:fail:id:${normalized}`,
+    // Above MAX_FAILED_LOGINS on purpose: set it lower and lockout becomes
+    // unreachable dead code, because the throttle would always fire first.
+    limit: 20,
+    windowMs: 5 * 60 * 1000,
+  };
+
+  await enforceRateLimitPeek(ipFailures);
+  await enforceRateLimitPeek(idFailures);
 
   const user = await findByIdentifier(normalized);
 
   if (!user) {
     // Spend comparable CPU so a missing account is not detectably faster.
     await equalizeTiming(password);
+    // No account to lock, so the failure counters are the only protection
+    // against enumeration.
+    await Promise.all([consumeRateLimit(ipFailures), consumeRateLimit(idFailures)]);
     throw apiError('invalid_credentials', 'That login ID or password is not correct.');
   }
 
@@ -69,6 +87,7 @@ export async function login({
   const ok = await verifyPassword(user.passwordHash, password);
 
   if (!ok) {
+    await Promise.all([consumeRateLimit(ipFailures), consumeRateLimit(idFailures)]);
     const failedLoginCount = user.failedLoginCount + 1;
     const shouldLock = failedLoginCount >= MAX_FAILED_LOGINS;
 
