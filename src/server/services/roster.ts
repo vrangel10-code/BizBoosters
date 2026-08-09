@@ -299,14 +299,46 @@ export async function removeStudent(
         data: { state: 'revoked', returnedAt: new Date() },
       });
 
-      for (const item of held) {
-        await tx.$executeRaw`
-          UPDATE room_cards
-             SET copies_remaining = copies_remaining + 1
-           WHERE room_id = ${roomId}::uuid AND card_id = ${item.cardId}::uuid
-             AND copies_remaining < copies_total
-        `;
-      }
+      // One statement rather than one per card. Grouping by card id is what
+      // makes it correct when a student was holding several copies of the same
+      // card, and the guard keeps any row from exceeding what exists.
+      await tx.$executeRaw`
+        UPDATE room_cards rc
+           SET copies_remaining = LEAST(rc.copies_total, rc.copies_remaining + back.n)
+          FROM (
+            SELECT card_id, COUNT(*)::int AS n
+              FROM unnest(${held.map((item) => item.cardId)}::uuid[]) AS s(card_id)
+             GROUP BY card_id
+          ) AS back
+         WHERE rc.room_id = ${roomId}::uuid
+           AND rc.card_id = back.card_id
+           AND rc.copies_remaining < rc.copies_total
+      `;
+    }
+
+    /**
+     * Their tokens for this room go too.
+     *
+     * A balance is per-enrolment, so leaving it standing would mean a student
+     * re-added later walks back in with a term's savings intact — and in the
+     * meantime the room's totals include tokens belonging to someone who is not
+     * in it. Zeroing it is done with a compensating ledger row rather than by
+     * writing the column, because `token_balance` must stay equal to the sum of
+     * its transactions or the nightly reconciliation fails. The history of how
+     * they earned them stays readable; only the balance goes.
+     */
+    if (enrollment.tokenBalance !== 0) {
+      await tx.tokenTransaction.create({
+        data: {
+          enrollmentId,
+          delta: -enrollment.tokenBalance,
+          balanceAfter: 0,
+          reason: 'educator_adjustment',
+          note: 'Removed from the room',
+          actorUserId: actor.id,
+        },
+      });
+      await tx.enrollment.update({ where: { id: enrollmentId }, data: { tokenBalance: 0 } });
     }
 
     await recordActivity(

@@ -215,7 +215,17 @@ describe('roster', () => {
     expect(roster[0]).toMatchObject({ display_name: 'Aisha Tan', token_balance: 40 });
   });
 
-  it('keeps the balance when a removed student is re-enrolled', async () => {
+  /**
+   * Removal now zeroes the balance, by explicit product decision — a student
+   * taken out of a room should not be able to walk back in later with a term's
+   * savings intact, and while they are out the room's totals should not include
+   * tokens belonging to someone who is not in it.
+   *
+   * The zeroing is a compensating ledger row, never a write to the column, so
+   * `token_balance = SUM(token_transactions.delta)` still holds and the nightly
+   * reconciliation stays green.
+   */
+  it('zeroes the balance on removal, through the ledger', async () => {
     const student = await addStudent('Aisha Tan');
     await awardTokens({
       actor: educator,
@@ -226,13 +236,23 @@ describe('roster', () => {
 
     await removeStudent(educator, room.id, student.enrollmentId);
 
-    // Re-adding reactivates the same enrolment rather than making a second one:
-    // a student who leaves and comes back has not lost what they earned.
+    const enrollment = await prisma.enrollment.findUniqueOrThrow({
+      where: { id: student.enrollmentId },
+    });
+    expect(enrollment.tokenBalance).toBe(0);
+
+    const ledger = await prisma.tokenTransaction.findMany({
+      where: { enrollmentId: student.enrollmentId },
+    });
+    expect(ledger.reduce((sum, row) => sum + row.delta, 0)).toBe(0);
+
+    // Re-adding reactivates the same enrolment rather than making a second one;
+    // they simply start again from zero.
     const readded = await prisma.enrollment.update({
       where: { id: student.enrollmentId },
       data: { status: 'active', removedAt: null },
     });
-    expect(readded.tokenBalance).toBe(40);
+    expect(readded.tokenBalance).toBe(0);
     expect(await prisma.enrollment.count({ where: { roomId: room.id } })).toBe(1);
   });
 
@@ -246,9 +266,11 @@ describe('roster', () => {
     });
     await removeStudent(educator, room.id, student.enrollmentId);
 
+    // The award, plus the compensating row that zeroed the balance. Nothing is
+    // deleted — how they earned the tokens stays answerable.
     expect(
       await prisma.tokenTransaction.count({ where: { enrollmentId: student.enrollmentId } }),
-    ).toBe(1);
+    ).toBe(2);
     const events = await prisma.activityEvent.findMany({
       where: { subjectEnrollmentId: student.enrollmentId },
     });

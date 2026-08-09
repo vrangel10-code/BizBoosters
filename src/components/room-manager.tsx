@@ -119,6 +119,69 @@ export default function RoomManager({
       }
     });
 
+  /**
+   * Correcting one student's balance, in either direction.
+   *
+   * It goes through the adjust endpoint rather than the award one because a
+   * correction is not an award: it writes a compensating ledger row with a
+   * reason attached, which is what makes "why do I have 40 tokens" answerable
+   * three weeks later. The reason is required by the server, so it is prompted
+   * for here rather than sent empty and rejected.
+   */
+  const adjust = (student: RosterRow, sign: 1 | -1) => {
+    const verb = sign === 1 ? 'give' : 'take away';
+    const raw = window.prompt(
+      `How many tokens to ${verb}? ${student.display_name} has ${student.token_balance}.`,
+      '10',
+    );
+    if (raw === null) return;
+    const size = Math.abs(Number(raw));
+    if (!Number.isInteger(size) || size <= 0) {
+      setError('Enter a whole number of tokens.');
+      return;
+    }
+
+    const reason = window.prompt('Reason (students see this):', '')?.trim();
+    if (!reason) {
+      setError('A reason is required so the change can be explained later.');
+      return;
+    }
+
+    return run(async () => {
+      const result = await api<{ balance: number }>(`/rooms/${roomId}/tokens/adjust`, {
+        method: 'POST',
+        body: JSON.stringify({
+          enrollment_id: student.enrollment_id,
+          delta: sign * size,
+          note: reason,
+        }),
+      });
+      setMessage(
+        `${student.display_name} now has ${result.balance} token${result.balance === 1 ? '' : 's'}.`,
+      );
+    });
+  };
+
+  /**
+   * Removing a student takes their cards back into the deck and zeroes their
+   * balance for this room. Both are irreversible enough to be worth a
+   * confirmation that says so in plain words rather than "are you sure?".
+   */
+  const remove = (student: RosterRow) => {
+    const confirmed = window.confirm(
+      `Remove ${student.display_name} from this room?\n\n` +
+        `Their cards go back into the deck and their ${student.token_balance} token` +
+        `${student.token_balance === 1 ? '' : 's'} for this room are cleared. ` +
+        `Their history stays in the log, and they keep their account for other rooms.`,
+    );
+    if (!confirmed) return;
+
+    return run(async () => {
+      await api(`/rooms/${roomId}/students/${student.enrollment_id}`, { method: 'DELETE' });
+      setMessage(`${student.display_name} has been removed from this room.`);
+    });
+  };
+
   const resetPassword = (enrollmentId: string) =>
     run(async () => {
       const result = await api<{ credentials: Credentials }>(
@@ -229,9 +292,33 @@ export default function RoomManager({
                       <button
                         className="link"
                         disabled={busy}
+                        onClick={() => adjust(student, -1)}
+                        aria-label={`Take tokens from ${student.display_name}`}
+                      >
+                        − Tokens
+                      </button>
+                      <button
+                        className="link"
+                        disabled={busy}
+                        onClick={() => adjust(student, 1)}
+                        aria-label={`Give tokens to ${student.display_name}`}
+                      >
+                        + Tokens
+                      </button>
+                      <button
+                        className="link"
+                        disabled={busy}
                         onClick={() => resetPassword(student.enrollment_id)}
                       >
                         Reset password
+                      </button>
+                      <button
+                        className="link danger"
+                        disabled={busy}
+                        onClick={() => remove(student)}
+                        aria-label={`Remove ${student.display_name} from this room`}
+                      >
+                        Remove
                       </button>
                     </td>
                   </tr>

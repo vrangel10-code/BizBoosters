@@ -6,6 +6,7 @@ import { listRoster } from '@/server/services/roster';
 import { listActivity } from '@/server/services/activity';
 import { ApiError } from '@/server/errors';
 import RoomManager from '@/components/room-manager';
+import RoomSettings from '@/components/room-settings';
 import ActivityFeed from '@/components/activity-feed';
 import NotificationBell from '@/components/notification-bell';
 import RecentUses from '@/components/recent-uses';
@@ -93,6 +94,20 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
 
       <div style={{ marginTop: '1.5rem' }}>
         <RoomManager roomId={roomId} roster={roster} />
+
+        <RoomSettings
+          room={{
+            id: context.room.id,
+            name: context.room.name,
+            status: context.room.status,
+            draw_cost_tokens: context.room.drawCostTokens,
+            trades_enabled: context.room.tradesEnabled,
+            trade_ratio: context.room.tradeRatio,
+            students_see_odds: context.room.studentsSeeOdds,
+            low_stock_threshold: context.room.lowStockThreshold,
+            version: context.room.version,
+          }}
+        />
       </div>
 
       <div style={{ marginTop: '1.5rem' }}>

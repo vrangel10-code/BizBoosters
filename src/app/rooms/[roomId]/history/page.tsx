@@ -1,5 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
+import LootboxLink from '@/components/lootbox-link';
 import { readSessionCookie, resolveSession } from '@/server/auth/session';
 import { requireRoomEnrollment } from '@/server/auth/room-guard';
 import { listActivity } from '@/server/services/activity';
@@ -47,7 +48,6 @@ export default async function StudentRoomPage({
           <p className="lede">Your tokens and history in this room.</p>
         </div>
         <nav className="page-nav">
-          <Link href={`/rooms/${roomId}/draw`}>Open a lootbox</Link>
           <Link href={`/rooms/${roomId}/inventory`}>Inventory</Link>
           <Link href={`/rooms/${roomId}/cards`}>Deck List</Link>
           <Link href="/home">← All rooms</Link>
@@ -62,9 +62,11 @@ export default async function StudentRoomPage({
             ? `enough for ${affordable} card draw${affordable === 1 ? '' : 's'}`
             : `${context.room.drawCostTokens - context.enrollment.tokenBalance} more tokens for your first draw`}
         </p>
-        <p className="hint">
-          <Link href={`/rooms/${roomId}/draw`}>Open a lootbox →</Link>
-        </p>
+        <LootboxLink
+          href={`/rooms/${roomId}/draw`}
+          affordable={affordable}
+          shortfall={context.room.drawCostTokens - context.enrollment.tokenBalance}
+        />
       </div>
 
       <div className="panel" style={{ marginTop: '1.5rem' }}>
