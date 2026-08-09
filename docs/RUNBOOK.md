@@ -49,9 +49,9 @@ total). To load them into a school's catalog, and optionally build a room's deck
 from them:
 
 ```bash
-pnpm deck:import --school <school-id>            # catalog only
-pnpm deck:import --school <school-id> --room <room-id>   # and build the deck
-pnpm deck:import --school <school-id> --skip-images      # names only, art later
+pnpm deck:import                                 # catalog only
+pnpm deck:import --room <room-id>                # and build the deck
+pnpm deck:import --skip-images                   # names only, art later
 ```
 
 Find the school id with `pnpm db:studio`, or from the output of
@@ -72,7 +72,7 @@ and `C1.png` all work. See `seed/images/README.md` for the full list.
 object storage keyed by the database, so the importer has to process them once:
 
 ```bash
-pnpm deck:import --school <school-id>
+pnpm deck:import
 ```
 
 Re-running is safe — cards that already have art are skipped, so you can add a

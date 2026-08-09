@@ -379,7 +379,7 @@ Get the school ID and room ID from the URL bar in the educator UI, then:
 
 ```bash
 DATABASE_URL="<session pooler string>" \
-  pnpm deck:import --school <school-id> --room <room-id>
+  pnpm deck:import --room <room-id>
 ```
 
 You can also build a deck entirely in the educator UI; the script just saves
@@ -1131,11 +1131,17 @@ made in Part 4.
 2. **Create a room.** Rooms → New room. Accept the defaults (20 tokens per
    draw, low-stock alert at 20 cards).
 3. **Add the cards.** Either build a deck in the interface, or run the import
-   command from your Appendix A terminal — you need the school ID and room ID,
-   which are the long codes in your browser's address bar when viewing the room:
+   from your Appendix A terminal. Open the room in the app and copy the long
+   code out of the address bar — the part after `/rooms/`:
    ```
-   pnpm deck:import --school PASTE-SCHOOL-ID --room PASTE-ROOM-ID
+   https://your-site.netlify.app/rooms/85cca17a-cdfe-484f-ad8b-546e552e6af1
+                                       └──────── this is the room id ───────┘
    ```
+   ```
+   pnpm deck:import --room PASTE-ROOM-ID
+   ```
+   That is the only id you need — the school is worked out from the room.
+   Expect `Imported 20 cards` and `Built the deck ...: 103 copies`.
 4. **Upload one card picture.** Open any card, upload a PNG or JPEG. Then check
    Supabase → Storage → `card-art` and confirm a file appeared. **This is the
    one part of the whole setup that has never been tested against a real

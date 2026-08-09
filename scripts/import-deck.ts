@@ -2,7 +2,11 @@
  * Imports a deck definition (seed/prototype-deck.json) into a school's card
  * catalog, and optionally builds a room's deck from it.
  *
- *   pnpm deck:import --school <school-id> [--room <room-id>] [--file seed/prototype-deck.json]
+ *   pnpm deck:import --room <room-id>
+ *   pnpm deck:import [--school <school-id>] [--room <room-id>] [--file ...]
+ *
+ * The school is inferred from the room, or from there being only one, so the
+ * room id from the app's URL is normally the only thing you need.
  *
  * Images come from `seed/images/<ref>.<ext>` when present, otherwise they are
  * downloaded from each card's `source_url`. Local files are the reliable route:
@@ -100,14 +104,49 @@ async function fetchImage(sourceUrl: string): Promise<Buffer> {
   return buffer;
 }
 
+/**
+ * Works out which school to import into without making anyone go and find a
+ * uuid.
+ *
+ * A room already knows its school, and the app's URLs contain a room id but
+ * never a school one — so demanding `--school` asked for the only identifier
+ * that is not on screen, and the old error helpfully suggested opening a
+ * database GUI. Almost every deployment is one school, so the remaining case
+ * resolves itself too; ambiguity is the only thing that still needs an answer,
+ * and it gets asked with the choices listed.
+ */
+async function resolveSchoolId(args: Record<string, string>): Promise<string> {
+  if (args.school) return args.school;
+
+  if (args.room) {
+    const room = await prisma.room.findUnique({
+      where: { id: args.room },
+      select: { schoolId: true },
+    });
+    if (!room) throw new Error(`No room with id ${args.room}. Check the id in the room's URL.`);
+    return room.schoolId;
+  }
+
+  const schools = await prisma.school.findMany({ orderBy: { createdAt: 'asc' }, take: 2 });
+  const only = schools[0];
+  if (!only) throw new Error('No schools exist yet. Run `pnpm admin:create` first.');
+  if (schools.length > 1) {
+    const all = await prisma.school.findMany({ orderBy: { createdAt: 'asc' } });
+    throw new Error(
+      'More than one school exists, so pass --school <id>:\n' +
+        all.map((s) => `  ${s.id}  ${s.name}`).join('\n'),
+    );
+  }
+  return only.id;
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const file = args.file ?? 'seed/prototype-deck.json';
-  const schoolId = args.school;
   const roomId = args.room;
   const skipImages = args['skip-images'] === 'true';
 
-  if (!schoolId) throw new Error('--school <school-id> is required. Find it with `pnpm db:studio`.');
+  const schoolId = await resolveSchoolId(args);
 
   const school = await prisma.school.findUnique({ where: { id: schoolId } });
   if (!school) throw new Error(`No school with id ${schoolId}.`);
