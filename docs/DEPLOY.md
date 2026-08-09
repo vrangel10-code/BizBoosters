@@ -82,6 +82,24 @@ message you keep. Type it into the command once.
 The first is your integrity check — it returns 500 if card copies or token
 balances ever stop adding up. Alert on that.
 
+### If the Railway build fails
+
+**`flag '--mount=type=cache,id=pnpm...' is missing the cacheKey prefix`** —
+Railway's builder rejects BuildKit cache mounts with a bare id. Fixed: the
+cache mount is gone.
+
+**`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`** — pnpm 11 refuses packages
+published in the last day or so, as a supply-chain precaution. It appeared
+because `corepack enable` on its own installs whatever pnpm is newest, so the
+container ran pnpm 11 against a lockfile written by pnpm 10. Fixed: the version
+is pinned in `package.json`'s `packageManager` field, and the Dockerfile calls
+`corepack prepare --activate` to honour it.
+
+If you ever bump that field to pnpm 11, regenerate the lockfile at the same
+time — and expect a build to fail if a dependency published something in the
+previous 24 hours. That is the policy working, not a bug; wait a day or relax
+`minimumReleaseAge` deliberately.
+
 ## Netlify
 
 Netlify can run this, but it is not a natural fit and you should know what you

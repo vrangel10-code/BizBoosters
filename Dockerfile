@@ -4,7 +4,14 @@
 # for glibc, and chasing musl builds of native modules is not worth the ~40 MB.
 FROM node:22-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
-RUN corepack enable
+# Suppress the interactive "Corepack is about to download..." prompt, which has
+# no answer in a build container.
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+# `corepack enable` alone installs whatever pnpm is newest, which is how a build
+# ends up running a different major version from the one that wrote the
+# lockfile. `prepare --activate` pins it to the `packageManager` field in
+# package.json, so the container, CI and a laptop all resolve identically.
+RUN corepack enable && corepack prepare --activate
 
 # ─── Dependencies ────────────────────────────────────────────────────────────
 FROM base AS deps
