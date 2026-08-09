@@ -1,9 +1,9 @@
 # Netlify deployment.
 #
-# Read docs/DEPLOY.md before relying on this: BizBoosters needs a database and
-# long-lived connections, and Netlify provides neither. This file makes the
-# build succeed and the app run; it cannot make server-sent events work on a
-# platform whose functions time out.
+# Read docs/DEPLOY-SUPABASE-NETLIFY.md before relying on this. Netlify runs the
+# app and Supabase holds the database; the one thing this pairing cannot do is
+# keep a connection open for a whole lesson, so server-sent events are cut and
+# the client falls back to 20-second polling. Nothing is lost, only liveness.
 
 [build]
   command = "pnpm prisma generate && pnpm build"
@@ -18,3 +18,8 @@
 # explicitly so a detection change cannot silently alter the deploy.
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# The two nightly jobs. Netlify has no cron service, so the schedules live in
+# the function files themselves (`export const config = { schedule: ... }`).
+[functions]
+  directory = "netlify/functions"

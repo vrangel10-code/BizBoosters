@@ -14,8 +14,9 @@ against your production database. See **[docs/LAUNCH.md](docs/LAUNCH.md)**.
 
 BizBoosters is a **hosted web app**, not an offline one: students open a URL,
 sign in with the ID their teacher gave them, and play. The shared deck only
-works because state lives on a server. See [docs/DEPLOY.md](docs/DEPLOY.md) to
-put it on a public URL.
+works because state lives on a server. To put it on a public URL, follow
+[docs/DEPLOY-SUPABASE-NETLIFY.md](docs/DEPLOY-SUPABASE-NETLIFY.md) for the
+Supabase + Netlify route, or [docs/DEPLOY.md](docs/DEPLOY.md) to compare hosts.
 
 ## Quick start (local)
 
@@ -41,7 +42,8 @@ in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 | [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md) | Every design decision made, with its reasoning |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Phased build plan |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Setup, migrations, first admin, backups, retention |
-| [docs/DEPLOY.md](docs/DEPLOY.md) | Getting it onto a public URL students can reach |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Choosing a host, and what each one costs you |
+| [docs/DEPLOY-SUPABASE-NETLIFY.md](docs/DEPLOY-SUPABASE-NETLIFY.md) | Step-by-step launch on Supabase + Netlify |
 | [docs/LAUNCH.md](docs/LAUNCH.md) | What is left before a real class uses it, and known gaps |
 | [docs/legal/](docs/legal/) | Privacy notice and terms — **drafts, need legal review** |
 

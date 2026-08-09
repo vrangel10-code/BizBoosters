@@ -102,6 +102,12 @@ previous 24 hours. That is the policy working, not a bug; wait a day or relax
 
 ## Netlify
 
+> **If you have chosen Netlify, follow
+> [DEPLOY-SUPABASE-NETLIFY.md](DEPLOY-SUPABASE-NETLIFY.md) instead** — it is the
+> complete, step-by-step version of this section, with Supabase as the database,
+> Supabase Storage for card art and the nightly jobs already written as
+> scheduled functions. What follows here is the summary.
+
 Netlify can run this, but it is not a natural fit and you should know what you
 give up before committing to it. Netlify has no database and its functions time
 out, so you supply the first and lose one feature to the second.
@@ -131,11 +137,12 @@ will now show a real error rather than an empty publish.
 
 ### What you still have to configure
 
-**A database.** Netlify does not provide one. [Neon](https://neon.tech) has a
-free tier and speaks plain Postgres — create a project, copy the pooled
-connection string, and set it as `DATABASE_URL` in Netlify → Site configuration
-→ Environment variables. Also set `APP_URL`, `SESSION_COOKIE_NAME` and
-`CRON_SECRET`.
+**A database.** Netlify does not provide one. [Supabase](https://supabase.com)
+and [Neon](https://neon.tech) both have free tiers and speak plain Postgres —
+create a project, copy the **transaction pooler** connection string, append
+`?pgbouncer=true&connection_limit=1`, and set it as `DATABASE_URL` in Netlify →
+Site configuration → Environment variables. Also set `APP_URL`,
+`SESSION_COOKIE_NAME` and `CRON_SECRET`.
 
 **Run the migrations yourself.** There is no entrypoint on Netlify, so nothing
 creates the schema. Run it from your machine against the production database —
@@ -154,9 +161,10 @@ Repeat the first command after any deploy that adds a migration.
 storage driver would lose every image on each deploy. Configure R2 or S3 — see
 "Card images" below.
 
-**Scheduled functions for the cron jobs**, since Netlify has no cron service in
-the way Railway does. Netlify Scheduled Functions can call the two endpoints, or
-run them from any machine with `curl`.
+**Nothing, for the cron jobs** — `netlify/functions/cron-reconcile.mjs` and
+`cron-retention.mjs` carry their own schedules and deploy with the site. They
+read `APP_URL` and `CRON_SECRET`, so those variables must be scoped to functions
+as well as builds.
 
 ### What does not work on Netlify
 
