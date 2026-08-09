@@ -228,9 +228,9 @@ There is no drag-and-drop path here; the app has to be built.
 4. Leave the build command and publish directory alone — `netlify.toml` in the
    repo already sets them (`pnpm prisma generate && pnpm build`, publishing
    `.next`).
-5. **Do not click Deploy yet.** Click **Add environment variables** first, or
-   the first build will fail and confuse you. If you already clicked deploy,
-   that is fine — set the variables and redeploy.
+5. Deploy. You can set the environment variables before or after: the build does
+   not read them, so it will go green either way. What it will not do is *work*
+   until Step 3.2 is done and you have redeployed.
 
 ### Step 3.2 — Set the environment variables
 
@@ -600,7 +600,7 @@ hazard, not a capacity one.
 
 | Problem | Likely fix |
 | --- | --- |
-| Build fails: `Environment variable not found: DATABASE_URL` | Set it in Netlify **before** deploying; the build needs it present, though it never connects |
+| Build succeeds but every page errors | The build genuinely does not need `DATABASE_URL` — nothing connects until a request arrives. A green build proves nothing about your variables; the health check in Step 3.3 is what proves them |
 | Build fails: `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` | `packageManager` in `package.json` pins pnpm 10 for this reason. If you have bumped it to 11, regenerate the lockfile in the same commit |
 | Site loads but says "Site not found" | A build published nothing. Check that nobody set `BUILD_STANDALONE` in Netlify's environment — that flag is for the Docker image only and breaks Netlify's runtime |
 | `/api/v1/health` returns a database error | Wrong connection string. Ports matter: **6543** for the app, and the string must end in `?pgbouncer=true&connection_limit=1` |
@@ -908,3 +908,246 @@ That is the entire maintenance routine.
 
 If you get an error that isn't in this table, copy the **whole** message — not a
 summary of it — and ask. The exact wording is what identifies the cause.
+
+---
+
+## Appendix B — Parts 3 to 6, click by click
+
+Appendix A got the tables into Supabase. This one takes you from there to a
+working website, in the same style: every button named, every value spelled out.
+
+**Budget 45 minutes**, most of it waiting for two builds.
+
+The order here differs slightly from Part 3 above, on purpose. The build does
+not read your settings, so it goes green whether or not you have configured
+anything — which means "the build worked" tells you nothing. Deploying **first**
+gets you your web address, so you can then enter every setting once, correctly,
+instead of entering a guess and coming back to fix it.
+
+### B.1 — Make a Netlify account
+
+1. Go to **[app.netlify.com](https://app.netlify.com)**.
+2. Click **Sign up** → **GitHub**, and use the same GitHub account the code is
+   in. Signing up with GitHub rather than email saves a linking step later.
+3. Netlify asks a few onboarding questions. Answer or skip them; none matter.
+
+### B.2 — Connect the code
+
+1. Click **Add new site** (or **Add new project** — Netlify has used both) →
+   **Import an existing project**.
+2. Click **GitHub**. A GitHub window pops up asking to authorise Netlify —
+   click **Authorize**.
+3. GitHub may then ask which repositories Netlify can see. Choose **Only select
+   repositories** → pick **BizBoosters** → **Install**. (**All repositories**
+   also works; the narrower option is just tidier.)
+4. Back in Netlify you get a list of your repositories. Click **BizBoosters**.
+
+### B.3 — Choose the branch, and only the branch
+
+You now see a settings page before deploying. **Change exactly one thing on it.**
+
+- **Branch to deploy:** click the dropdown and choose
+  `claude/bizboosters-app-build-i1tzmb`.
+
+Leave everything else alone. Build command and publish directory are already
+filled in from the `netlify.toml` file in the repo — if the boxes look empty or
+say something odd, that is fine, the file wins.
+
+Ignore the "Add environment variables" section for now. Click **Deploy**
+(sometimes **Deploy BizBoosters**).
+
+### B.4 — Wait for the first build
+
+You land on a page showing the build running. Click into it to watch the log
+scroll if you like — it installs dependencies, generates the database client and
+builds the app.
+
+**This takes 3 to 6 minutes.** Wait for it.
+
+- **Green, "Published"** → carry on.
+- **Red, "Failed"** → scroll to the bottom of the log, copy the last 20 lines,
+  and check them against the troubleshooting table in the main guide.
+
+At this point the site exists but **does not work yet** — it has no idea where
+your database is. That is expected. Don't open it and panic.
+
+### B.5 — Give the site a name you can say out loud
+
+Netlify has named it something like `serene-pastry-a1b2c3`.
+
+1. In the left sidebar: **Site configuration** → **General** → find **Site
+   information** → **Change site name**.
+2. Type something students can type: `bizboosters-sunway`, for example. Lowercase
+   letters, numbers and hyphens only.
+3. Save.
+
+**Write down your full address** — it is `https://` then the name then
+`.netlify.app`:
+
+```
+https://bizboosters-sunway.netlify.app
+```
+
+You need it in the next step, exactly, with no trailing slash.
+
+### B.6 — Make a CRON_SECRET
+
+One of the settings is a long random password that only your site and its
+nightly jobs know. Generate it rather than inventing one.
+
+Go back to your terminal from Appendix A and run:
+
+```
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+It prints 64 random characters. Copy them. That is your `CRON_SECRET`.
+
+### B.7 — Write out all your settings in a text editor
+
+This is the step to take slowly. Open a plain text editor — TextEdit on Mac,
+Notepad on Windows — and build up the block below, replacing every `PASTE...`
+with your real value. Do not add spaces around the `=` signs.
+
+```
+DATABASE_URL=PASTE THE TRANSACTION POOLER STRING (PORT 6543) WITH ?pgbouncer=true&connection_limit=1 ON THE END
+APP_URL=PASTE YOUR https://...netlify.app ADDRESS FROM B.5
+SESSION_COOKIE_NAME=bb_session
+CRON_SECRET=PASTE THE 64 CHARACTERS FROM B.6
+MAIL_TRANSPORT=console
+S3_BUCKET=card-art
+S3_REGION=PASTE THE REGION FROM PART 2
+S3_ENDPOINT=PASTE THE S3 ENDPOINT FROM PART 2
+S3_ACCESS_KEY_ID=PASTE FROM PART 2
+S3_SECRET_ACCESS_KEY=PASTE FROM PART 2
+S3_PUBLIC_BASE_URL=PASTE FROM PART 2
+```
+
+Where each one comes from:
+
+| Setting | Where you got it |
+| --- | --- |
+| `DATABASE_URL` | Step 1.2 — the **6543** one. **Not** the 5432 one in your `.env` file |
+| `APP_URL` | B.5, above. No slash on the end |
+| `SESSION_COOKIE_NAME` | Type `bb_session` exactly |
+| `CRON_SECRET` | B.6, above |
+| `MAIL_TRANSPORT` | Type `console` exactly |
+| The six `S3_` lines | Part 2. If you have not done Part 2 yet, **delete those six lines** and do the rest now — everything works except card pictures, and you can add them later |
+
+Two mistakes worth checking for before you move on:
+
+- **`DATABASE_URL` is the 6543 string here.** Appendix A used the 5432 one. They
+  look nearly identical and swapping them is the most common failure in this
+  whole guide.
+- **No quote marks.** Your `.env` file on your laptop had `"` around the value.
+  Netlify does not want them — the quotes would become part of the value.
+
+### B.8 — Paste them into Netlify
+
+Netlify can take the whole block at once, which is far less error-prone than
+typing eleven settings by hand.
+
+1. Left sidebar → **Site configuration** → **Environment variables**.
+2. Click **Add a variable** → choose **Import from a .env file**.
+3. Paste your whole block into the box.
+4. Leave the scopes setting as **All scopes** if you are offered it. This
+   matters: the nightly jobs read `APP_URL` and `CRON_SECRET`, and a setting
+   scoped to builds only is invisible to them.
+5. Click **Import variables**.
+
+You should now see all eleven listed. Values are hidden behind dots — that is
+normal. Click one open and check for stray spaces or quote marks.
+
+> If you cannot find "Import from a .env file", use **Add a single variable**
+> eleven times instead: key on the left, value on the right, scope **All
+> scopes**, and **Same value for all deploy contexts**.
+
+### B.9 — Redeploy so the settings take effect
+
+Settings only reach the site on the next build.
+
+1. Left sidebar → **Deploys**.
+2. Top right → **Trigger deploy** → **Deploy site**.
+3. Wait 3–6 minutes for green.
+
+### B.10 — The moment of truth
+
+In your browser, go to your address with `/api/v1/health` on the end:
+
+```
+https://bizboosters-sunway.netlify.app/api/v1/health
+```
+
+You want to see, as plain text on a white page:
+
+```json
+{"status":"ok","checks":{"database":{"ok":true,"latency_ms":42}}}
+```
+
+**That one line proves everything**: the site is up, the app is running, and it
+can reach your Supabase database. A different number after `latency_ms` is fine.
+
+**Do not continue until you see it.**
+
+| What you see instead | What it means |
+| --- | --- |
+| `"error"` mentioning the database, or a 500 page | `DATABASE_URL` is wrong. Nine times in ten it is the 5432 string where the 6543 one belongs, or `?pgbouncer=true&connection_limit=1` is missing from the end |
+| "Page not found" | The build did not publish. Check **Deploys** — the newest one should say Published |
+| It hangs, then errors | The Supabase project is asleep. Open the Supabase dashboard, wait a minute, reload |
+
+Now open the site's home page. You should get the BizBoosters **login screen**.
+You have no account yet — that is Part 4, and Appendix A section A.9 has the
+command. Do that now, then come back here.
+
+### B.11 — Check the nightly jobs exist (Part 5)
+
+Nothing to configure; just confirm they arrived.
+
+Left sidebar → **Logs** → **Functions**. You should see `cron-reconcile` and
+`cron-retention` in the list. They will not have run yet — they fire at 03:00
+and 04:00 UTC.
+
+**Turn on the alarm while you are here:** **Site configuration** →
+**Notifications** → **Add notification** → **Deploy failed** and, if offered,
+**Function error** → your email. The 03:00 job is the one that checks the game's
+arithmetic still adds up; it should never fail, so if it emails you, read it.
+
+### B.12 — Test it like a student (Part 6)
+
+Do this now, not on the morning of a class. Sign in as the admin account you
+made in Part 4.
+
+1. **Change your password** when it forces you to. Confirm it will not let you
+   go anywhere else first.
+2. **Create a room.** Rooms → New room. Accept the defaults (20 tokens per
+   draw, low-stock alert at 20 cards).
+3. **Add the cards.** Either build a deck in the interface, or run the import
+   command from your Appendix A terminal — you need the school ID and room ID,
+   which are the long codes in your browser's address bar when viewing the room:
+   ```
+   pnpm deck:import --school PASTE-SCHOOL-ID --room PASTE-ROOM-ID
+   ```
+4. **Upload one card picture.** Open any card, upload a PNG or JPEG. Then check
+   Supabase → Storage → `card-art` and confirm a file appeared. **This is the
+   one part of the whole setup that has never been tested against a real
+   bucket** — if it fails, see "Card image upload fails" in the main guide, and
+   do not import all your art until one image works.
+5. **Add two test students**, award tokens to one, then sign in as that student
+   in a **private/incognito window** (so you stay signed in as yourself in the
+   normal one). Draw a card. Use it.
+6. **Check from the educator side** that the notification arrived, the used card
+   went back into the deck, and the room history shows all three events.
+7. **Delete the test room.** A room full of test data is a room you will one day
+   mistake for a real one.
+
+### B.13 — Before real students
+
+Two things left, both in [LAUNCH.md](LAUNCH.md):
+
+- **Have someone review `docs/legal/`.** Those are unreviewed drafts and you
+  will be processing children's data. This is the one item that genuinely
+  blocks you.
+- **Run a backup restore once**, following [RUNBOOK.md](RUNBOOK.md), while
+  losing the data would cost nothing.
+
+Then hand out the URL.
