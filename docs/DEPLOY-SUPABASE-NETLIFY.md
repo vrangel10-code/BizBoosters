@@ -75,14 +75,23 @@ Everything you need is inside two accounts. There is no third bill.
    - **Database password:** generate a strong one and **save it in your password
      manager now**. Unlike the guide's app, you *will* need this — it is part of
      every connection string below. Supabase will not show it again.
-   - **Region:** the one closest to your students —
-     `Southeast Asia (Singapore)` for Malaysia.
+   - **Region:** see the warning below before choosing. On Netlify's free plan
+     the answer is a **US East** region, however wrong that looks.
 4. Click **Create new project** and wait ~2 minutes.
 
-> **Pick the region deliberately.** Every draw is a round trip from Netlify's
-> function to this database. A database in Virginia and students in Kuala Lumpur
-> adds ~250 ms to every click, which is the difference between the draw feeling
-> instant and feeling broken. Also see the Netlify region note in Step 3.2.
+> **Do not pick the region nearest your students.** That is the intuitive
+> choice and it is the wrong one, because the app does not run where your
+> students are — on Netlify's free plan it runs in a US region, and every query
+> travels from *there*.
+>
+> Put the database where the app runs. A page load pays the browser→app gap
+> once, but the app→database gap once per wave of queries, so splitting those
+> two is what costs whole seconds. The arithmetic is in the region note in
+> [Step 3.2](#step-32--set-the-environment-variables).
+>
+> **This cannot be changed later** — a Supabase project's region is fixed at
+> creation, and moving means a new project. If you get it wrong, the recovery is
+> [Appendix C](#appendix-c--moving-the-database-to-sit-beside-the-app).
 
 ### Step 1.2 — Collect the three connection strings
 
@@ -1238,3 +1247,153 @@ Two things left, both in [LAUNCH.md](LAUNCH.md):
   losing the data would cost nothing.
 
 Then hand out the URL.
+
+---
+
+## Appendix C — moving the database to sit beside the app
+
+For a deployment where the app runs in a US region (Netlify's free-plan
+default) but the database was created in Asia. Every query crosses the Pacific,
+and the room page pays that crossing three times. Putting the database in the
+same region as the functions removes it.
+
+**Budget 30 minutes.** Free. The only real cost is that a Supabase project's
+region cannot be changed, so this means a *new* project — which is why it is
+worth doing while a term of student work does not yet depend on it.
+
+**You will lose the data in the old project.** If that is one test room and a
+card catalogue, good — recreating it is five minutes and is in the steps below.
+If you have real student history, stop and ask for the dump-and-restore route
+instead; it needs Postgres command-line tools that are not installed by
+default on Windows.
+
+### C.0 — Write down what you have now
+
+Load the health URL a few times and note the lowest `latency_ms`. That is your
+before number, and the only way to know at the end whether this was worth it.
+
+```
+https://your-site.netlify.app/api/v1/health
+```
+
+**Do not delete the old Supabase project yet.** It stays as a fallback until
+the new one is proven, and it costs nothing to leave it alone for a day.
+
+### C.1 — Create the new project
+
+1. Supabase → **New project** (the organisation dropdown → New project).
+   The free tier allows two, so this sits alongside the old one.
+2. **Name:** `bizboosters-us`
+3. **Database password:** a long one, **letters and numbers only** — symbols
+   have to be escaped inside a connection string and are not worth the trouble.
+   Save it in your password manager.
+4. **Region: East US (North Virginia).**
+
+> Netlify's US default may be Virginia or Ohio depending on your site. It does
+> not matter: those two are ~15 ms apart, against the ~170 ms you are removing.
+> Do not spend time trying to match it exactly.
+
+5. **Create new project**, wait ~2 minutes.
+
+### C.2 — Point your laptop at the new database
+
+1. New project → **Connect** → copy the **Session pooler** string (port
+   **5432**).
+2. Open your `.env` file in the project folder — `open -e .env` on a Mac,
+   `notepad .env` on Windows.
+3. Replace the whole line with the new string, password substituted, square
+   brackets deleted, quotes kept:
+
+```
+DATABASE_URL="postgresql://postgres.NEW-REF:NEWPASSWORD@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
+```
+
+4. Save and close.
+
+### C.3 — Create the tables and your account
+
+In the terminal, in the project folder:
+
+```
+pnpm prisma migrate deploy
+```
+
+Expect `All migrations have been successfully applied.` Then:
+
+```
+pnpm admin:create --school "Sunway University" --email vincentr@sunway.edu.my --name "Your Name"
+```
+
+**Copy the generated password before closing the window.** This is a brand new
+database — your old account does not exist here, and the old password will not
+work.
+
+### C.4 — Recreate the card art bucket
+
+The old project's Storage goes away with it, so the new project needs its own.
+
+1. New project → **Storage** → **New bucket** → name `card-art`, **Public: ON**.
+2. **Storage** → **S3 Connection** → note the **endpoint** and **region**, then
+   **New access key** and copy both halves.
+
+### C.5 — Repoint Netlify
+
+Netlify → **Site configuration** → **Environment variables**. Seven values
+change; the rest stay as they are.
+
+| Variable | New value |
+| --- | --- |
+| `DATABASE_URL` | The new project's **transaction pooler** string (port **6543**) with `?pgbouncer=true&connection_limit=5&pool_timeout=20` on the end |
+| `S3_REGION` | From C.4 |
+| `S3_ENDPOINT` | From C.4 — contains the new project ref |
+| `S3_ACCESS_KEY_ID` | From C.4 |
+| `S3_SECRET_ACCESS_KEY` | From C.4 |
+| `S3_PUBLIC_BASE_URL` | From C.4 — contains the new project ref |
+
+`S3_BUCKET` stays `card-art`. `APP_URL`, `SESSION_COOKIE_NAME`, `CRON_SECRET`
+and `MAIL_TRANSPORT` do not change.
+
+Then **Deploys** → **Trigger deploy** → **Deploy site**.
+
+### C.6 — Check it worked
+
+Load the health URL several times and take the lowest `latency_ms`.
+
+```
+https://your-site.netlify.app/api/v1/health
+```
+
+**Under ~30 ms means it worked** — the app and the database are now in the same
+region. If it is still in the hundreds, the deploy has not picked up the new
+`DATABASE_URL`; check the value and redeploy.
+
+Then sign in with the account from C.3, change the password when prompted, and
+confirm the room page opens without the intermittent failure.
+
+### C.7 — Rebuild the room
+
+1. **Rooms → New room**, accept the defaults.
+2. Copy the room id from the address bar and rebuild the deck:
+   ```
+   pnpm deck:import --room PASTE-ROOM-ID
+   ```
+3. Upload one card image and confirm it appears in Storage → `card-art` on the
+   **new** project.
+
+### C.8 — Delete the old project
+
+Only once everything above is confirmed, and preferably a day later.
+
+Supabase → old project → **Project Settings** → **General** → scroll to
+**Delete project**. Leaving it costs nothing except one of your two free
+project slots, so there is no hurry.
+
+### What this does and does not fix
+
+It removes the ocean between the app and the database — the expensive gap,
+because it is paid once per wave of queries rather than once per page.
+
+It does not move the app closer to you. Every page still starts with a round
+trip from Malaysia to a US region, roughly 220 ms, and that is now the floor.
+Closing it means running the app in Asia too: a container host with a Singapore
+region, which also restores live updates — see [DEPLOY.md](DEPLOY.md).
