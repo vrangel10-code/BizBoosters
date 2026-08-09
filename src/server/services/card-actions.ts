@@ -491,31 +491,52 @@ export async function listRecentUses(
   roomId: string,
   options: { unacknowledgedOnly?: boolean; limit?: number } = {},
 ): Promise<RecentUse[]> {
-  const items = await prisma.inventoryItem.findMany({
-    where: { roomId, state: 'used' },
-    orderBy: { usedAt: 'desc' },
-    take: Math.min(options.limit ?? 50, 200),
-    include: {
-      card: { select: { name: true, rarity: true } },
-      enrollment: { include: { student: { select: { displayName: true } } } },
-    },
-  });
+  // Was two serial queries — the uses, then which of them had been
+  // acknowledged. The acknowledgement is a left join, so it costs nothing to
+  // fetch alongside, and the room page waits on one round trip instead of two.
+  const limit = Math.min(options.limit ?? 50, 200);
 
-  const acks = await prisma.cardUseAcknowledgement.findMany({
-    where: { inventoryItemId: { in: items.map((item) => item.id) } },
-    select: { inventoryItemId: true },
-  });
-  const acknowledged = new Set(acks.map((ack) => ack.inventoryItemId));
+  const found = await prisma.$queryRaw<
+    {
+      item_id: string;
+      card_name: string;
+      rarity: RecentUse['rarity'];
+      student_name: string;
+      enrollment_id: string;
+      used_at: Date;
+      note: string | null;
+      acknowledged: boolean;
+    }[]
+  >`
+    SELECT i.id                                   AS item_id,
+           c.name                                 AS card_name,
+           -- ::text on purpose; see the note in decks.ts getDeckOdds.
+           c.rarity::text                         AS rarity,
+           u.display_name                         AS student_name,
+           i.enrollment_id                        AS enrollment_id,
+           COALESCE(i.used_at, i.acquired_at)     AS used_at,
+           i.student_note                         AS note,
+           (a.inventory_item_id IS NOT NULL)      AS acknowledged
+      FROM inventory_items i
+      JOIN cards c        ON c.id = i.card_id
+      JOIN enrollments e  ON e.id = i.enrollment_id
+      JOIN users u        ON u.id = e.student_id
+      LEFT JOIN card_use_acknowledgements a ON a.inventory_item_id = i.id
+     WHERE i.room_id = ${roomId}::uuid
+       AND i.state = 'used'
+     ORDER BY i.used_at DESC NULLS LAST
+     LIMIT ${limit}
+  `;
 
-  const rows = items.map((item) => ({
-    item_id: item.id,
-    card_name: item.card.name,
-    rarity: item.card.rarity,
-    student_name: item.enrollment.student.displayName,
-    enrollment_id: item.enrollmentId,
-    used_at: item.usedAt?.toISOString() ?? item.acquiredAt.toISOString(),
-    note: item.studentNote,
-    acknowledged: acknowledged.has(item.id),
+  const rows = found.map((row) => ({
+    item_id: row.item_id,
+    card_name: row.card_name,
+    rarity: row.rarity,
+    student_name: row.student_name,
+    enrollment_id: row.enrollment_id,
+    used_at: row.used_at.toISOString(),
+    note: row.note,
+    acknowledged: row.acknowledged,
   }));
 
   return options.unacknowledgedOnly ? rows.filter((row) => !row.acknowledged) : rows;
@@ -545,23 +566,27 @@ export async function acknowledgeUse(
 
 /** The diagnostic for an empty circulating deck: who is holding what. */
 export async function heldByStudent(roomId: string) {
-  const rows = await prisma.inventoryItem.groupBy({
-    by: ['enrollmentId'],
-    where: { roomId, state: 'owned' },
-    _count: true,
-  });
+  // Counting and then naming used to be two queries, and the second could not
+  // start until the first came back. On the room page that serial pair was a
+  // second round trip nobody needed — the join does both at once.
+  const rows = await prisma.$queryRaw<
+    { enrollment_id: string; student_name: string; held: number }[]
+  >`
+    SELECT i.enrollment_id            AS enrollment_id,
+           u.display_name             AS student_name,
+           COUNT(*)::int              AS held
+      FROM inventory_items i
+      JOIN enrollments e ON e.id = i.enrollment_id
+      JOIN users u       ON u.id = e.student_id
+     WHERE i.room_id = ${roomId}::uuid
+       AND i.state = 'owned'
+     GROUP BY i.enrollment_id, u.display_name
+     ORDER BY held DESC
+  `;
 
-  const enrollments = await prisma.enrollment.findMany({
-    where: { id: { in: rows.map((row) => row.enrollmentId) } },
-    include: { student: { select: { displayName: true } } },
-  });
-  const nameFor = new Map(enrollments.map((e) => [e.id, e.student.displayName]));
-
-  return rows
-    .map((row) => ({
-      enrollment_id: row.enrollmentId,
-      student_name: nameFor.get(row.enrollmentId) ?? 'Unknown',
-      held: row._count,
-    }))
-    .sort((a, b) => b.held - a.held);
+  return rows.map((row) => ({
+    enrollment_id: row.enrollment_id,
+    student_name: row.student_name,
+    held: row.held,
+  }));
 }

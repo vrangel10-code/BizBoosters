@@ -61,24 +61,52 @@ export interface DeckOdds {
  * number an empty deck looks like a bug.
  */
 export async function getDeckOdds(room: Room): Promise<DeckOdds> {
+  // One round trip, not two. The counts and the labels used to be separate
+  // queries, and this runs on the educator's room page alongside five other
+  // loaders — on a deployment where the database is an ocean away, every
+  // avoidable round trip is ~200ms of the page's latency.
+  //
+  // Driving the join from `unnest(RARITY_ORDER)` rather than from either table
+  // is what makes it one query: a rarity with no cards and a rarity with no
+  // row in room_rarities both still produce a row, which is what the four
+  // fixed tiers need.
   const rows = await prisma.$queryRaw<
-    { rarity: RarityCode; in_deck: number; total: number }[]
+    {
+      rarity: RarityCode;
+      in_deck: number;
+      total: number;
+      label: string | null;
+      color_hex: string | null;
+    }[]
   >`
-    SELECT c.rarity,
-           COALESCE(SUM(rc.copies_remaining), 0)::int AS in_deck,
-           COALESCE(SUM(rc.copies_total), 0)::int     AS total
-      FROM room_cards rc
-      JOIN cards c ON c.id = rc.card_id
-     WHERE rc.room_id = ${room.id}::uuid
-     GROUP BY c.rarity
+    WITH stock AS (
+      SELECT c.rarity::text                              AS rarity,
+             COALESCE(SUM(rc.copies_remaining), 0)::int  AS in_deck,
+             COALESCE(SUM(rc.copies_total), 0)::int      AS total
+        FROM room_cards rc
+        JOIN cards c ON c.id = rc.card_id
+       WHERE rc.room_id = ${room.id}::uuid
+       GROUP BY c.rarity
+    )
+    -- Deliberately text, not the enum. Selecting an enum column through a raw
+    -- query makes the driver fetch that type's OID from pg_catalog first, which
+    -- is a whole extra round trip the first time a connection sees it — and on
+    -- serverless, connections are new far more often than they are reused.
+    SELECT tier.code                      AS rarity,
+           COALESCE(stock.in_deck, 0)     AS in_deck,
+           COALESCE(stock.total, 0)       AS total,
+           rr.label                       AS label,
+           rr.color_hex                   AS color_hex
+      FROM unnest(${RARITY_ORDER}::text[]) AS tier(code)
+      LEFT JOIN stock ON stock.rarity = tier.code
+      LEFT JOIN room_rarities rr
+             ON rr.room_id = ${room.id}::uuid
+            AND rr.code::text = tier.code
   `;
 
-  const byRarity = new Map(rows.map((row) => [row.rarity, row]));
   const inDeck = rows.reduce((sum, row) => sum + row.in_deck, 0);
   const total = rows.reduce((sum, row) => sum + row.total, 0);
-
-  const labels = await prisma.roomRarity.findMany({ where: { roomId: room.id } });
-  const labelFor = new Map(labels.map((row) => [row.code, row]));
+  const byRarity = new Map(rows.map((row) => [row.rarity, row]));
 
   return {
     rarities: RARITY_ORDER.map((code) => {
@@ -87,8 +115,8 @@ export async function getDeckOdds(room: Room): Promise<DeckOdds> {
       const totalCount = row?.total ?? 0;
       return {
         code,
-        label: labelFor.get(code)?.label ?? DEFAULT_RARITIES[code].label,
-        color_hex: labelFor.get(code)?.colorHex ?? DEFAULT_RARITIES[code].colorHex,
+        label: row?.label ?? DEFAULT_RARITIES[code].label,
+        color_hex: row?.color_hex ?? DEFAULT_RARITIES[code].colorHex,
         in_deck: deckCount,
         held: totalCount - deckCount,
         total: totalCount,
