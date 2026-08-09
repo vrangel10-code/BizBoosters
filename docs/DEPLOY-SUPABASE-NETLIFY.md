@@ -131,6 +131,11 @@ draw.
 
 ### Step 1.3 — Create the tables
 
+> **Never used a terminal?** Do
+> [Appendix A](#appendix-a--the-terminal-part-for-people-who-have-never-used-one)
+> instead — it is this step written out click by click, and it also covers
+> Part 4. Come back here when the tables exist.
+
 Do **not** paste SQL into the SQL Editor. The schema is 19 tables with 12
 integrity constraints, and it lives in the repo as versioned migrations so that
 future changes apply cleanly instead of needing you to spot the difference.
@@ -659,3 +664,247 @@ Netlify.
 Step 3.3's health check and Step 6.4's image upload are where the unverified
 parts show up first. That is why they are separate, early steps rather than
 things you discover during a lesson.
+
+---
+
+## Appendix A — the terminal part, for people who have never used one
+
+There are exactly two commands in this whole deployment that you have to run
+yourself: one creates the database tables (Step 1.3), one creates your admin
+account (Part 4). Everything else is clicking in a browser.
+
+This appendix sets your laptop up once and then runs both. **Budget 30 minutes**,
+most of it waiting for downloads. You do not need to understand any of it, and
+nothing here can damage your computer or your database — the worst outcome is an
+error message, and every error I have seen is in the table at the end.
+
+Do this on the same laptop you will use for the rest of setup.
+
+### A.0 — First, check your database password
+
+Open the note where you saved your Supabase database password from Step 1.1.
+
+**If it contains anything other than letters and numbers** — `@ # / ? & % : $`
+and so on — change it now. The password gets embedded in a web-address-shaped
+string, and those characters mean something special inside an address, so the
+connection silently breaks in a way that looks like a wrong password.
+
+To change it: Supabase → **Project Settings** → **Database** → **Reset database
+password**. Generate a new one, and if it has symbols, replace it with a long
+one you type yourself — 20+ letters and numbers, no symbols. Something like
+`Rk48mTqzWvb3Np7xLd91` is far stronger than a short one with punctuation.
+
+Save it in your password manager.
+
+### A.1 — Install Node.js
+
+Node.js is the thing that runs the app's code. Installing it is a normal
+installer, like installing Zoom.
+
+1. Go to **[nodejs.org](https://nodejs.org)**.
+2. Click the big green button labelled **LTS**. ("LTS" means the stable one.)
+3. Open the downloaded file and click Next / Continue / Agree through the
+   installer, accepting every default.
+4. Restart your computer if it asks. If it doesn't, you still need to **close
+   any terminal window you already have open** — new software is only visible to
+   windows opened afterwards.
+
+### A.2 — Open a terminal
+
+A terminal is a window where you type commands instead of clicking. It looks
+alarming and is not.
+
+**On a Mac:** press `Cmd` + `Space`, type `Terminal`, press Enter.
+
+**On Windows:** press the Start button, type `PowerShell`, click **Windows
+PowerShell**.
+
+You'll get a mostly-empty window with a blinking cursor. Type this and press
+Enter:
+
+```
+node -v
+```
+
+You should see a version number like `v22.14.0` or `v24.3.0`. **Anything
+starting with v20.11 or higher is fine.**
+
+If instead you see "command not found" or "is not recognized", Node didn't
+install or the terminal was open before you installed it. Close the terminal,
+open a new one, and try again. If it still fails, run the installer again.
+
+### A.3 — Install pnpm
+
+pnpm fetches the code libraries the app depends on. Type this and press Enter:
+
+```
+npm install -g pnpm@10.33.0
+```
+
+Wait for it to finish (10–30 seconds). Then check:
+
+```
+pnpm -v
+```
+
+You should see `10.33.0`.
+
+> **Type that version number exactly.** Newer pnpm refuses to install packages
+> published in the last day, which turns an unrelated release by a library
+> author into a failed setup. Pinning the version avoids the whole subject.
+
+**Windows only, if you see a red error mentioning "running scripts is
+disabled":** paste this, press Enter, type `Y`, press Enter, then run
+`pnpm -v` again.
+
+```
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+### A.4 — Download the code
+
+1. Go to
+   **https://github.com/vrangel10-code/BizBoosters/tree/claude/bizboosters-app-build-i1tzmb**
+2. Click the green **Code** button → **Download ZIP**.
+3. Find the ZIP in your Downloads folder and unzip it — double-click on a Mac,
+   or right-click → Extract All on Windows.
+4. You now have a folder named something like
+   `BizBoosters-claude-bizboosters-app-build-i1tzmb`. **Move it to your Desktop**
+   so it is easy to find.
+5. Open it and check you can see a file called `package.json` and a folder
+   called `prisma`. If you instead see a single folder with the same name again,
+   go into that one — that's the real one.
+
+### A.5 — Point the terminal at that folder
+
+The terminal is always "in" some folder, and it needs to be in this one.
+
+Type `cd` — that's c, d, then **a space** — and then **drag the folder from your
+Desktop onto the terminal window and let go.** The path fills itself in. Press
+Enter.
+
+```
+cd /Users/you/Desktop/BizBoosters-claude-bizboosters-app-build-i1tzmb
+```
+
+Check you're in the right place:
+
+**On a Mac:** type `ls` and press Enter.
+**On Windows:** type `dir` and press Enter.
+
+You should see `package.json` and `prisma` in the list. If you don't, you're in
+the wrong folder — repeat the drag.
+
+### A.6 — Create the settings file
+
+The app needs to know your database address. It reads it from a file called
+`.env` (the dot at the front is deliberate).
+
+**On a Mac**, type these two lines, pressing Enter after each:
+
+```
+touch .env
+open -e .env
+```
+
+**On Windows**, type this and press Enter, then click **Yes** when it offers to
+create the file:
+
+```
+notepad .env
+```
+
+Either way, an empty text editor opens. Into it, type `DATABASE_URL=` and then
+paste your **session pooler** connection string from Step 1.2 in quotes, so the
+whole file is one line:
+
+```
+DATABASE_URL="postgresql://postgres.abcdefghij:YOURPASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
+```
+
+Three things people get wrong here:
+
+- It must be the **session pooler** string, the one ending in **`:5432/postgres`**.
+  The 6543 one is for Netlify and will not work for this.
+- `[YOUR-PASSWORD]` must be replaced with your actual password, **and the square
+  brackets deleted**.
+- Keep the straight quotes `"` at both ends.
+
+Save and close: **Mac** `Cmd`+`S` then `Cmd`+`W`. **Windows** `Ctrl`+`S` then
+close the window.
+
+### A.7 — Install the app's dependencies
+
+Back in the terminal:
+
+```
+pnpm install
+```
+
+This downloads a few hundred libraries and takes **2–5 minutes**. You'll see
+scrolling text and a progress bar. It ends with something like
+`Done in 2m 14s`. Yellow warnings are normal; only red errors matter.
+
+### A.8 — Create the tables (this is Step 1.3)
+
+```
+pnpm prisma migrate deploy
+```
+
+This is the moment. You should see:
+
+```
+Datasource "db": PostgreSQL database "postgres"
+
+10 migrations found in prisma/migrations
+
+Applying migration `20260808133204_phase0_identity`
+Applying migration `20260808133500_identifier_lowercase_checks`
+...
+All migrations have been successfully applied.
+```
+
+**Check it worked in the browser:** Supabase → **Table Editor** → the dropdown
+at the top left set to `public`. You should see a list of about 19 tables —
+`schools`, `users`, `rooms`, `enrollments`, `cards`, `room_cards`, `draws`,
+`inventory_items`, `token_transactions`, `activity_events`, `notifications` and
+so on. They are all empty. That is correct — there is no data yet.
+
+**Step 1.3 is done.** Go back to Part 2 of the main guide.
+
+### A.9 — Later, for Part 4
+
+When you reach Part 4, come back to this same terminal window in this same
+folder and run this, with your own school name, email and name in the quotes:
+
+```
+pnpm admin:create --school "Sunway University" --email vincentr@sunway.edu.my --name "Your Name"
+```
+
+It reads the same `.env` file, so there is nothing else to set up. It prints a
+generated password **once** — copy it somewhere before closing the window. That
+is what you sign in with, and the app will make you change it immediately.
+
+### A.10 — Keep the folder
+
+Don't delete it. When a future update adds a database change, you'll download a
+fresh ZIP over it and run `pnpm install` and `pnpm prisma migrate deploy` again.
+That is the entire maintenance routine.
+
+### When something goes wrong
+
+| What you see | What it means | What to do |
+| --- | --- | --- |
+| `command not found: node` / `'node' is not recognized` | Node isn't installed, or the terminal predates it | Close the terminal, open a new one. If still failing, reinstall from nodejs.org |
+| `command not found: pnpm` | A.3 didn't finish | Re-run `npm install -g pnpm@10.33.0` and watch for red text |
+| `running scripts is disabled on this system` | Windows blocks new commands by default | Run the `Set-ExecutionPolicy` line in A.3 |
+| `no such file or directory: package.json` | The terminal is in the wrong folder | Redo A.5, dragging the folder that contains `package.json` |
+| `Environment variable not found: DATABASE_URL` | The `.env` file is missing, misnamed, or in the wrong folder | It must be called exactly `.env`, in the same folder as `package.json`. On Windows, check Notepad didn't save it as `.env.txt` |
+| `Can't reach database server` | Wrong host, or the project is asleep | Open the Supabase dashboard to wake the project, then retry. Check you pasted the whole string |
+| `password authentication failed` | Wrong password, or it has symbols | Redo A.0 — reset to a letters-and-numbers password and update `.env` |
+| `Error: P1010` / permission denied | You used the wrong connection string | It must be the session pooler, port **5432** |
+| `prepared statement "s0" already exists` | You used the app's string (port 6543) here | Swap to the 5432 one in `.env` |
+| It printed migration names then `All migrations have been successfully applied` | Nothing. It worked | Carry on to Part 2 |
+
+If you get an error that isn't in this table, copy the **whole** message — not a
+summary of it — and ask. The exact wording is what identifies the cause.
