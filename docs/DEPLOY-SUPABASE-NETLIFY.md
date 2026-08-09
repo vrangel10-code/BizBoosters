@@ -108,10 +108,10 @@ copy the real hostname from the dashboard, never retype it from here):
 
 ```
 # For Netlify — the app
-postgresql://postgres.abcdefghij:YOURPASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
+postgresql://postgres.YOUR-PROJECT-REF:YOUR-PASSWORD@aws-0-YOUR-REGION.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
 
 # For your laptop — migrations and admin
-postgresql://postgres.abcdefghij:YOURPASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres
+postgresql://postgres.YOUR-PROJECT-REF:YOUR-PASSWORD@aws-0-YOUR-REGION.pooler.supabase.com:5432/postgres
 ```
 
 **Why two.** A Netlify function is short-lived and there may be forty of them at
@@ -149,7 +149,7 @@ git checkout claude/bizboosters-app-build-i1tzmb
 pnpm install
 
 # Use the SESSION pooler string here (port 5432)
-DATABASE_URL="postgresql://postgres.abcdefghij:YOURPASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres" \
+DATABASE_URL="postgresql://postgres.YOUR-PROJECT-REF:YOUR-PASSWORD@aws-0-YOUR-REGION.pooler.supabase.com:5432/postgres" \
   pnpm prisma migrate deploy
 ```
 
@@ -300,7 +300,7 @@ exactly one way in, and you create it from your laptop:
 
 ```bash
 # SESSION pooler string again (port 5432)
-DATABASE_URL="postgresql://postgres.abcdefghij:YOURPASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres" \
+DATABASE_URL="postgresql://postgres.YOUR-PROJECT-REF:YOUR-PASSWORD@aws-0-YOUR-REGION.pooler.supabase.com:5432/postgres" \
   pnpm admin:create \
     --school "Sunway University" \
     --email vincentr@sunway.edu.my \
@@ -819,7 +819,7 @@ paste your **session pooler** connection string from Step 1.2 in quotes, so the
 whole file is one line:
 
 ```
-DATABASE_URL="postgresql://postgres.abcdefghij:YOURPASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
+DATABASE_URL="postgresql://postgres.YOUR-PROJECT-REF:YOUR-PASSWORD@aws-0-YOUR-REGION.pooler.supabase.com:5432/postgres"
 ```
 
 Three things people get wrong here:

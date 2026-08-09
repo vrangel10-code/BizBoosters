@@ -1,5 +1,6 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { diagnoseDatabaseError } from '../src/server/db-diagnosis';
+import { DOC_PLACEHOLDERS, diagnoseDatabaseError } from '../src/server/db-diagnosis';
 
 /**
  * The error shapes below are the real ones, copied from what Prisma, Postgres
@@ -47,6 +48,54 @@ describe('diagnoseDatabaseError', () => {
     );
     expect(reason).toBe('tenant_not_found');
     expect(hint).toContain('postgres.<project-ref>');
+  });
+
+  /**
+   * Verbatim from a real Netlify function log. The classifier originally
+   * matched only "Tenant or user not found" and returned `unknown` for this,
+   * which is how it reached production: Supavisor phrases the same condition
+   * two ways and only one of them was in the docs I read.
+   */
+  it('recognises the ENOTFOUND phrasing Supavisor actually sends', () => {
+    const { reason } = diagnoseDatabaseError(
+      new Error(
+        'Error querying the database: FATAL: (ENOTFOUND) tenant/user postgres.qwertyuiop not found',
+      ),
+    );
+    expect(reason).toBe('tenant_not_found');
+  });
+
+  /**
+   * The sharper diagnosis. Someone who pasted the guide's example needs to be
+   * told that, not sent to check a project ref they never entered.
+   */
+  it('spots an example value copied out of the guide', () => {
+    const { reason, hint } = diagnoseDatabaseError(
+      new Error(
+        'Error querying the database: FATAL: (ENOTFOUND) tenant/user postgres.abcdefghij not found',
+      ),
+    );
+    expect(reason).toBe('placeholder_not_replaced');
+    expect(hint).toContain('Supabase → Connect');
+  });
+
+  it('keeps DOC_PLACEHOLDERS covering every example string in the guide', async () => {
+    const guide = await readFile(
+      new URL('../docs/DEPLOY-SUPABASE-NETLIFY.md', import.meta.url),
+      'utf8',
+    );
+
+    const examples = [...guide.matchAll(/postgresql:\/\/postgres\.([^:\s]+):([^@\s]+)@([^\s/]+)/g)];
+    expect(examples.length).toBeGreaterThan(0);
+
+    for (const [full, ref, , host] of examples) {
+      const covered = DOC_PLACEHOLDERS.some((placeholder) =>
+        `${ref}${host}`.toLowerCase().includes(placeholder),
+      );
+      // A guide example that no placeholder matches is one that will be pasted
+      // and then diagnosed as a mystery.
+      expect(covered, `no DOC_PLACEHOLDER matches: ${full}`).toBe(true);
+    }
   });
 
   it('spots an unreachable or sleeping database', () => {

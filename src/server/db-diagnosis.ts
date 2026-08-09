@@ -14,6 +14,7 @@
 export type DatabaseFailure =
   | 'not_configured'
   | 'invalid_url'
+  | 'placeholder_not_replaced'
   | 'auth_failed'
   | 'tenant_not_found'
   | 'unreachable'
@@ -21,11 +22,25 @@ export type DatabaseFailure =
   | 'schema_missing'
   | 'unknown';
 
+/**
+ * Example values that have appeared in the setup guide. A connection string
+ * containing one of these was copied from the documentation rather than from
+ * the Supabase dashboard — a mistake the guide invited by printing a sample
+ * that looked real enough to paste, and one worth naming precisely because
+ * every other diagnosis sends you looking at your own settings for a value
+ * that was never yours.
+ *
+ * Kept in sync by a test that reads the guide.
+ */
+export const DOC_PLACEHOLDERS = ['abcdefghij', 'your-project-ref', 'your-region'] as const;
+
 const HINTS: Record<DatabaseFailure, string> = {
   not_configured:
     'DATABASE_URL is not set on this deployment. Add it, then redeploy — environment variables only reach the site on the next build.',
   invalid_url:
     'DATABASE_URL is not a valid connection string. The usual cause is quotation marks around the value, which belong in a local .env file but not in a hosting dashboard.',
+  placeholder_not_replaced:
+    'DATABASE_URL still contains an example value from the setup guide rather than your own project. Copy the transaction pooler string from Supabase → Connect with the copy button, replace [YOUR-PASSWORD] with your password, and append ?pgbouncer=true&connection_limit=1.',
   auth_failed:
     'The database rejected the username or password. Check the password in DATABASE_URL, and note that a password containing symbols such as @ / ? # must be percent-encoded or changed to letters and numbers.',
   tenant_not_found:
@@ -71,8 +86,21 @@ export function diagnoseDatabaseError(error: unknown): {
     }
     // Supavisor answers an unknown pooler username this way, and it is not an
     // authentication failure — telling someone to check their password here
-    // sends them to the wrong place entirely.
-    if (text.includes('tenant or user not found')) return 'tenant_not_found';
+    // sends them to the wrong place entirely. It phrases it two ways depending
+    // on version: "Tenant or user not found" and
+    // "(ENOTFOUND) tenant/user postgres.<ref> not found".
+    const unknownTenant =
+      text.includes('tenant or user not found') ||
+      (text.includes('tenant/user') && text.includes('not found'));
+
+    if (unknownTenant) {
+      // Narrower than tenant_not_found and checked first: the username came
+      // out of the guide, so no amount of looking at the dashboard for a
+      // mistyped ref will help.
+      return DOC_PLACEHOLDERS.some((value) => text.includes(value))
+        ? 'placeholder_not_replaced'
+        : 'tenant_not_found';
+    }
     if (prismaCode === 'P1000' || text.includes('authentication failed')) return 'auth_failed';
     if (
       prismaCode === 'P1001' ||
