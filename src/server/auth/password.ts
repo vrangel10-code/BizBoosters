@@ -33,7 +33,13 @@ const COMMON_PASSWORDS = new Set([
   'bizboosters', 'bizboosters1', 'changeme', 'changeme1', 'students', 'teacher1',
 ]);
 
-export const MIN_PASSWORD_LENGTH = { student: 8, educator: 10 } as const;
+/**
+ * Eight characters for everyone, which is the NIST SP 800-63B floor for a
+ * user-chosen secret. The educator minimum was 10 — my own conservatism rather
+ * than a standard — and an arbitrary extra two characters buys far less than
+ * the blocklist and the account lockout that back it up.
+ */
+export const MIN_PASSWORD_LENGTH = { student: 8, educator: 8 } as const;
 
 export interface PasswordPolicyInput {
   password: string;

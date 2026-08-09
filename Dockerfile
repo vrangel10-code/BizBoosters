@@ -10,8 +10,12 @@ RUN corepack enable
 FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml .npmrc ./
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile
+# No BuildKit cache mount here on purpose. It speeds up rebuilds locally, but
+# Railway's builder requires cache ids to carry its own prefix and rejects a
+# bare `id=pnpm` outright — the whole build fails to parse. Losing a warm pnpm
+# store costs a few seconds; a Dockerfile that only builds on some hosts costs
+# far more.
+RUN pnpm install --frozen-lockfile
 
 # ─── Build ───────────────────────────────────────────────────────────────────
 FROM base AS build

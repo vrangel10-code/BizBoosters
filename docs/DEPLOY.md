@@ -50,14 +50,27 @@ start — nothing to run by hand.
 add the CNAME it gives you at your registrar. HTTPS is automatic.
 
 **6. Create the first administrator.** A fresh deployment has no way in until
-you do:
+you do. Run it against the production database — `railway run` injects the
+service's own `DATABASE_URL`:
 
 ```bash
-railway run pnpm admin:create --school "Your School" --email you@school.edu --name "Your Name"
+railway run pnpm admin:create \
+  --school "Your School" \
+  --email you@school.edu \
+  --name "Your Name" \
+  --password 'choose-one-here'
 ```
 
-It prints a one-time password. Sign in at `https://yourdomain.com`, change it,
-then invite your teachers from the admin area.
+Omit `--password` and one is generated, printed once, and flagged for change at
+first login. Supply your own and you can sign in with it straight away.
+
+The account is created as **`school_admin`**, which is a superset of educator:
+it can create rooms, add students, award tokens and build decks like any
+teacher, *and* invite other teachers. There is no separate "admin + educator"
+role because it would be the same set of permissions.
+
+Do not put a real password in a script, a `.env` committed to git, or a chat
+message you keep. Type it into the command once.
 
 **7. Schedule the two cron jobs.** Railway → New → Cron:
 

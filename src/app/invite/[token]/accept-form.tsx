@@ -62,7 +62,7 @@ export default function AcceptInvitationForm({ token }: { token: string }) {
         value={password}
         onChange={(event) => setPassword(event.target.value)}
       />
-      <p className="hint">At least 10 characters.</p>
+      <p className="hint">At least 8 characters.</p>
 
       <label htmlFor="confirm">Password again</label>
       <input
