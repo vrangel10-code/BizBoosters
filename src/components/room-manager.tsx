@@ -13,6 +13,12 @@ interface RosterRow {
   locked: boolean;
 }
 
+interface SchoolStudent {
+  id: string;
+  display_name: string;
+  login_id: string | null;
+}
+
 interface Credentials {
   login_id: string;
   default_password: string;
@@ -42,6 +48,10 @@ export default function RoomManager({
    * disappearing on the next refresh.
    */
   const [issued, setIssued] = useState<Credentials[]>([]);
+  const [pool, setPool] = useState<SchoolStudent[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
 
   const allSelected = roster.length > 0 && selected.size === roster.length;
 
@@ -181,6 +191,37 @@ export default function RoomManager({
       setMessage(`${student.display_name} has been removed from this room.`);
     });
   };
+
+  /**
+   * Enrol students who already have an account.
+   *
+   * The only way in used to be "add a student", which creates a new account —
+   * so putting an existing student into a second room failed on their login ID
+   * being taken, and the message pointed at a name clash rather than at the
+   * real answer. A student in three classes is one account with three
+   * enrolments; this is the door to that.
+   */
+  const loadSchoolStudents = () =>
+    run(async () => {
+      const result = await api<{ data: SchoolStudent[] }>('/students');
+      const enrolled = new Set(roster.map((row) => row.login_id));
+      setPool(result.data.filter((student) => !enrolled.has(student.login_id)));
+      setPickerOpen(true);
+    });
+
+  const addExisting = () =>
+    run(async () => {
+      const result = await api<{ data: unknown[] }>(`/rooms/${roomId}/students`, {
+        method: 'POST',
+        body: JSON.stringify({ student_ids: [...picked] }),
+      });
+      setMessage(
+        `Added ${picked.size} student${picked.size === 1 ? '' : 's'} to this room. ` +
+          `The room now has ${result.data.length}.`,
+      );
+      setPicked(new Set());
+      setPickerOpen(false);
+    });
 
   const resetPassword = (enrollmentId: string) =>
     run(async () => {
@@ -354,7 +395,73 @@ export default function RoomManager({
       </div>
 
       <div className="panel" style={{ marginTop: '1.5rem' }}>
-        <h2 className="panel-title">Add students</h2>
+        <h2 className="panel-title">Add students already at your school</h2>
+        <p className="hint">
+          A student in two classes is one account with two enrolments — they keep one login, and
+          their tokens and cards are counted separately per room.
+        </p>
+
+        {pickerOpen ? (
+          <>
+            <label htmlFor="student-search">Search</label>
+            <input
+              id="student-search"
+              placeholder="Name or login ID"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+
+            {pool.length === 0 ? (
+              <p className="hint">Everyone at your school is already in this room.</p>
+            ) : (
+              <ul className="pick-list">
+                {pool
+                  .filter((student) => {
+                    const needle = search.trim().toLowerCase();
+                    if (!needle) return true;
+                    return (
+                      student.display_name.toLowerCase().includes(needle) ||
+                      (student.login_id ?? '').toLowerCase().includes(needle)
+                    );
+                  })
+                  .map((student) => (
+                    <li key={student.id}>
+                      <label className="checkbox">
+                        <input
+                          type="checkbox"
+                          checked={picked.has(student.id)}
+                          onChange={() => {
+                            const next = new Set(picked);
+                            if (next.has(student.id)) next.delete(student.id);
+                            else next.add(student.id);
+                            setPicked(next);
+                          }}
+                        />
+                        {student.display_name} <code>{student.login_id}</code>
+                      </label>
+                    </li>
+                  ))}
+              </ul>
+            )}
+
+            <div className="card-actions">
+              <button disabled={busy || picked.size === 0} onClick={addExisting}>
+                Add {picked.size} to this room
+              </button>
+              <button className="secondary" disabled={busy} onClick={() => setPickerOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <button className="secondary" disabled={busy} onClick={loadSchoolStudents}>
+            Choose from existing students
+          </button>
+        )}
+      </div>
+
+      <div className="panel" style={{ marginTop: '1.5rem' }}>
+        <h2 className="panel-title">Create a new student</h2>
 
         <label htmlFor="new-name">One student</label>
         <div className="inline-form">

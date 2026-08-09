@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
+import { describeActivity } from '@/lib/activity-text';
 
 interface Row {
   id: string;
@@ -23,49 +24,7 @@ const TYPES = [
   { value: 'pool.reset', label: 'Deck resets' },
 ];
 
-const num = (value: unknown) => (typeof value === 'number' ? value : null);
-const str = (value: unknown) => (typeof value === 'string' ? value : null);
 
-function describe(row: Row): string {
-  const card = str(row.payload.card_name);
-  const note = str(row.payload.note);
-  switch (row.type) {
-    case 'tokens.awarded':
-      return `received ${num(row.payload.amount) ?? '?'} tokens${note ? ` — ${note}` : ''}`;
-    case 'tokens.adjusted':
-      return `tokens adjusted by ${num(row.payload.delta) ?? '?'}${note ? ` — ${note}` : ''}`;
-    case 'tokens.undone':
-      return `award undone (${num(row.payload.delta) ?? '?'} tokens)`;
-    case 'card.drawn':
-      return `drew ${card ?? 'a card'}`;
-    case 'card.used':
-      return `used ${card ?? 'a card'}${note ? ` — ${note}` : ''}`;
-    case 'card.returned':
-      return `returned ${card ?? 'a card'} to the deck`;
-    case 'card.traded':
-      return `traded up to ${card ?? 'a card'}`;
-    case 'enrollment.added':
-      return 'joined the room';
-    case 'enrollment.removed':
-      return 'was removed from the room';
-    case 'pool.reset':
-      return 'deck was reset';
-    case 'pool.updated':
-      return 'deck was changed';
-    case 'pool.low':
-      return `deck ran low (${num(row.payload.in_deck) ?? '?'} left)`;
-    case 'pool.empty':
-      return 'deck ran empty';
-    case 'room.created':
-      return 'room was created';
-    case 'room.archived':
-      return 'room was archived';
-    case 'room.settings_changed':
-      return 'room settings changed';
-    default:
-      return row.type;
-  }
-}
 
 /**
  * A bulk award writes one row per student, so 30 near-identical lines would
@@ -76,7 +35,8 @@ function collapse(rows: Row[]): { row: Row; count: number }[] {
   const seen = new Map<string, number>();
 
   for (const row of rows) {
-    const batchId = str(row.payload.batch_id);
+    const batchId =
+      typeof row.payload.batch_id === 'string' ? row.payload.batch_id : null;
     if (!batchId) {
       out.push({ row, count: 1 });
       continue;
@@ -217,7 +177,7 @@ export default function ActivityLog({
                   <td>
                     {count > 1 ? `${count} students` : (row.subjectName ?? row.actorName ?? '—')}
                   </td>
-                  <td>{describe(row)}</td>
+                  <td>{describeActivity(row)}</td>
                 </tr>
               ))}
             </tbody>

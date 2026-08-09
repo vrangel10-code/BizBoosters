@@ -5,6 +5,7 @@ import { createStudent, resetStudentPassword } from '../src/server/services/stud
 import { login, changePassword } from '../src/server/services/auth-service';
 import { resolveSession } from '../src/server/auth/session';
 import { ApiError } from '../src/server/errors';
+import { DEFAULT_STUDENT_PASSWORD } from '../src/server/auth/identifiers';
 
 let school: School;
 let educator: User;
@@ -39,7 +40,7 @@ describe('createStudent', () => {
     const credentials = await newStudent();
 
     expect(credentials.loginId).toMatch(/^aisha-tan-\d{4}$/);
-    expect(credentials.defaultPassword).toMatch(/^[a-z]+-[a-z]+-\d{3}$/);
+    expect(credentials.defaultPassword).toBe(DEFAULT_STUDENT_PASSWORD);
 
     const student = await prisma.user.findUniqueOrThrow({ where: { id: credentials.userId } });
     expect(student.mustChangePassword).toBe(true);
@@ -47,10 +48,25 @@ describe('createStudent', () => {
     expect(student.email).toBeNull();
   });
 
-  it('generates a distinct default password per student', async () => {
+  /**
+   * Every student starts on the same known password now, by explicit product
+   * decision. It is a weaker secret than a per-student one and that is accepted
+   * because of what it replaces: a teacher reading thirty distinct one-time
+   * passwords aloud, each mistype moving a child closer to a ten-failure
+   * lockout. What keeps it defensible is that it is only ever valid until first
+   * sign-in — which is the assertion below, not the sharing.
+   */
+  it('starts every student on the same password, valid only until first sign-in', async () => {
     const first = await newStudent('Aisha Tan');
     const second = await newStudent('Ben Cole');
-    expect(first.defaultPassword).not.toBe(second.defaultPassword);
+
+    expect(first.defaultPassword).toBe(DEFAULT_STUDENT_PASSWORD);
+    expect(second.defaultPassword).toBe(DEFAULT_STUDENT_PASSWORD);
+
+    for (const credentials of [first, second]) {
+      const student = await prisma.user.findUniqueOrThrow({ where: { id: credentials.userId } });
+      expect(student.mustChangePassword).toBe(true);
+    }
   });
 
   it('stores only a hash of the default password', async () => {
@@ -140,19 +156,41 @@ describe('resetStudentPassword', () => {
 
     const reset = await resetStudentPassword(educator, credentials.userId, testIp);
 
-    expect(reset.defaultPassword).not.toBe(credentials.defaultPassword);
+    // A reset puts the account back on the shared default, so what it revokes
+    // is the password the student chose — not this one.
+    expect(reset.defaultPassword).toBe(DEFAULT_STUDENT_PASSWORD);
     expect(await resolveSession(token)).toBeNull();
 
     const student = await prisma.user.findUniqueOrThrow({ where: { id: credentials.userId } });
     expect(student.mustChangePassword).toBe(true);
 
-    await expectApiError(
-      login({ identifier: credentials.loginId, password: credentials.defaultPassword, ip: testIp }),
-      'invalid_credentials',
-    );
     await expect(
       login({ identifier: reset.loginId, password: reset.defaultPassword, ip: testIp }),
     ).resolves.toBeTruthy();
+  });
+
+  it('invalidates the password the student had chosen', async () => {
+    const credentials = await newStudent();
+    const { user, token } = await login({
+      identifier: credentials.loginId,
+      password: credentials.defaultPassword,
+      ip: testIp,
+    });
+    const session = await prisma.session.findFirstOrThrow({ where: { userId: user.id } });
+    await changePassword({
+      user,
+      newPassword: 'aisha-picks-this',
+      currentSessionId: session.id,
+      ip: testIp,
+    });
+
+    await resetStudentPassword(educator, credentials.userId, testIp);
+
+    await expectApiError(
+      login({ identifier: credentials.loginId, password: 'aisha-picks-this', ip: testIp }),
+      'invalid_credentials',
+    );
+    expect(await resolveSession(token)).toBeNull();
   });
 
   it('clears a lockout, so a reset is also the unlock', async () => {

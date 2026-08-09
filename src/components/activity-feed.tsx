@@ -1,3 +1,8 @@
+import { describeActivity } from '@/lib/activity-text';
+
+const num = (value: unknown): number | null => (typeof value === 'number' ? value : null);
+const str = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+
 interface ActivityRow {
   id: string;
   type: string;
@@ -7,36 +12,11 @@ interface ActivityRow {
   payload: Record<string, unknown>;
 }
 
-const num = (value: unknown): number | null => (typeof value === 'number' ? value : null);
-const str = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
-/** One sentence per event, in the room's own vocabulary. */
+/** One sentence per event: who it was about, then what happened. */
 function describe(row: ActivityRow): string {
   const who = row.subjectName ?? 'a student';
-  const amount = num(row.payload.amount);
-  const delta = num(row.payload.delta);
-  const note = str(row.payload.note);
-
-  switch (row.type) {
-    case 'tokens.awarded':
-      return `${who} received ${amount ?? '?'} tokens${note ? ` — ${note}` : ''}`;
-    case 'tokens.adjusted':
-      return `${who}'s tokens adjusted by ${delta ?? '?'}${note ? ` — ${note}` : ''}`;
-    case 'tokens.undone':
-      return `An award to ${who} was undone (${delta ?? '?'} tokens)`;
-    case 'enrollment.added':
-      return `${who} joined the room`;
-    case 'enrollment.removed':
-      return `${who} was removed from the room`;
-    case 'room.created':
-      return 'Room created';
-    case 'room.settings_changed':
-      return 'Room settings changed';
-    case 'room.archived':
-      return 'Room archived';
-    default:
-      return row.type;
-  }
+  return `${who} ${describeActivity(row)}`;
 }
 
 /**

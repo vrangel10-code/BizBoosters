@@ -300,7 +300,7 @@ export async function undoTokenTransaction(
 // nightly job and the tests alike.
 
 export async function listTokenTransactions(enrollmentId: string, limit = 100) {
-  return prisma.tokenTransaction.findMany({
+  const rows = await prisma.tokenTransaction.findMany({
     where: { enrollmentId },
     orderBy: { createdAt: 'desc' },
     take: limit,
@@ -309,4 +309,30 @@ export async function listTokenTransactions(enrollmentId: string, limit = 100) {
       reversedBy: { select: { id: true } },
     },
   });
+
+  /**
+   * Name the card a draw was spent on.
+   *
+   * The ledger points at the draw by id and deliberately does not join to it —
+   * the ledger has to outlive whatever it references. So the lookup happens
+   * here, for display only, in one query for the whole page rather than one per
+   * row, and a row whose draw has since been deleted simply shows no name.
+   */
+  const drawIds = rows
+    .filter((row) => row.relatedType === 'draw' && row.relatedId)
+    .map((row) => row.relatedId!);
+
+  const cardByDraw = new Map<string, string>();
+  if (drawIds.length > 0) {
+    const draws = await prisma.draw.findMany({
+      where: { id: { in: drawIds } },
+      select: { id: true, card: { select: { name: true } } },
+    });
+    for (const draw of draws) cardByDraw.set(draw.id, draw.card.name);
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    cardName: row.relatedId ? (cardByDraw.get(row.relatedId) ?? null) : null,
+  }));
 }

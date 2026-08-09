@@ -53,11 +53,32 @@ export function generateLoginId(displayName: string): string {
 }
 
 /**
- * `maple-otter-473`. Two words plus three digits is ~26 bits, which is thin on
- * its own but is only ever a single-use credential: it is shown to the educator
- * once, forced to be changed at first login, and sits behind account lockout.
- * Readability matters more here — a teacher reads these aloud or off a slip.
+ * The starting password every student account is created with.
+ *
+ * It used to be random per student (`maple-otter-473`). A shared, known value
+ * is weaker, and the trade is deliberate: a teacher handing out thirty distinct
+ * one-time passwords spends the first ten minutes of a lesson re-reading them
+ * aloud, and every mistyped one moves a student closer to the ten-failure
+ * lockout. One password the whole class can be told once removes that.
+ *
+ * What keeps it defensible:
+ *  - it is only ever valid until first sign-in — the change is forced, and no
+ *    other page is reachable until it is done;
+ *  - the new password may not be this one, checked against the stored hash;
+ *  - login IDs are per-student and not published, so knowing this is not on its
+ *    own enough to reach an account;
+ *  - lockout still applies.
+ *
+ * It is still a shared secret in a classroom, so it protects nothing after the
+ * first lesson. Reset an account rather than assuming this is still current.
  */
+export const DEFAULT_STUDENT_PASSWORD = 'Bizboosters123';
+
 export function generateDefaultPassword(): string {
+  return DEFAULT_STUDENT_PASSWORD;
+}
+
+/** Random and single-use — for the bootstrap admin, which no class shares. */
+export function generateRandomPassword(): string {
   return `${pickWord()}-${pickWord()}-${randomInt(100, 1000)}`;
 }

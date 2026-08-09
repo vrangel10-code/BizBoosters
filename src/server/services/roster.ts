@@ -50,9 +50,14 @@ async function enroll(roomId: string, studentId: string): Promise<Enrollment> {
   });
 
   if (existing) {
-    if (existing.status === 'active') {
-      throw apiError('already_enrolled', 'That student is already in this room.');
-    }
+    // Already in the room: return what is there rather than failing.
+    //
+    // This is reached when an educator adds several students at once and one of
+    // them is already enrolled. Throwing aborted the whole batch over a request
+    // that was, in substance, already satisfied — and the 409 read as though
+    // adding the student had gone wrong.
+    if (existing.status === 'active') return existing;
+
     return prisma.enrollment.update({
       where: { id: existing.id },
       data: { status: 'active', removedAt: null },

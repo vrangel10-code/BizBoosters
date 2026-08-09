@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import LootboxLink from '@/components/lootbox-link';
+import { describeActivity, describeTokenReason, sentenceCase } from '@/lib/activity-text';
 import { readSessionCookie, resolveSession } from '@/server/auth/session';
 import { requireRoomEnrollment } from '@/server/auth/room-guard';
 import { listActivity } from '@/server/services/activity';
@@ -94,7 +95,7 @@ export default async function StudentRoomPage({
                     {entry.delta}
                   </td>
                   <td>
-                    {entry.note ?? (entry.reason === 'educator_award' ? 'Awarded' : 'Adjusted')}
+                    {entry.note ?? describeTokenReason(entry.reason, entry.cardName)}
                     {entry.reversedBy ? <span className="tag">undone</span> : null}
                   </td>
                   <td>{entry.balanceAfter}</td>
@@ -113,7 +114,7 @@ export default async function StudentRoomPage({
               <span className="feed-when">
                 {row.createdAt.toLocaleDateString(undefined, { dateStyle: 'medium' })}
               </span>
-              <span>{row.type.replace(/[._]/g, ' ')}</span>
+              <span>{sentenceCase(describeActivity(row))}</span>
             </li>
           ))}
         </ul>

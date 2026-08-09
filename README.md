@@ -50,7 +50,8 @@ in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 ## What is built
 
 **Accounts** — educators by admin invitation only (no signup route exists);
-students by roster creation with generated login IDs and one-time passwords.
+students by roster creation with generated login IDs and a shared starting
+password that must be changed at first sign-in.
 Argon2id, server-side sessions, forced first-login password change enforced in
 the guard rather than the UI.
 

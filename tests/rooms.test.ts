@@ -11,6 +11,7 @@ import {
 } from '../src/server/services/rooms';
 import {
   createAndEnrollStudent,
+  addExistingStudents,
   importRoster,
   parseRosterCsv,
   removeStudent,
@@ -19,6 +20,7 @@ import {
 import { awardTokens } from '../src/server/services/tokens';
 import { requireRoomEducator, requireRoomEnrollment } from '../src/server/auth/room-guard';
 import { ApiError } from '../src/server/errors';
+import { DEFAULT_STUDENT_PASSWORD } from '../src/server/auth/identifiers';
 
 let school: School;
 let educator: User;
@@ -149,6 +151,84 @@ describe('room access', () => {
 
     await removeStudent(educator, room.id, student.enrollmentId);
     await expectApiError(requireRoomEnrollment(studentUser, room.id), 'not_found');
+  });
+});
+
+/**
+ * The reported failure: adding a student who already exists to a second room
+ * came back saying their login ID was taken, because the only door in was the
+ * one that creates an account. A student in two classes is one account with two
+ * enrolments, and these are what that has to mean.
+ */
+describe('a student in more than one room', () => {
+  it('enrols an existing student into a second room without a new account', async () => {
+    const student = await addStudent('Aisha Tan');
+    const second = await createRoom({
+      actor: educator,
+      schoolId: school.id,
+      name: 'Enterprise 8A',
+    });
+
+    const roster = await addExistingStudents({
+      actor: educator,
+      roomId: second.id,
+      studentIds: [student.userId],
+      ip: testIp,
+    });
+
+    expect(roster).toHaveLength(1);
+    // One account, two enrolments — not two accounts.
+    expect(await prisma.user.count({ where: { role: 'student' } })).toBe(1);
+    expect(await prisma.enrollment.count({ where: { studentId: student.userId } })).toBe(2);
+  });
+
+  it('keeps the two rooms’ token balances entirely separate', async () => {
+    const student = await addStudent('Aisha Tan');
+    const second = await createRoom({
+      actor: educator,
+      schoolId: school.id,
+      name: 'Enterprise 8A',
+    });
+    await addExistingStudents({
+      actor: educator,
+      roomId: second.id,
+      studentIds: [student.userId],
+      ip: testIp,
+    });
+
+    const secondEnrollment = await prisma.enrollment.findFirstOrThrow({
+      where: { studentId: student.userId, roomId: second.id },
+    });
+
+    await awardTokens({
+      actor: educator,
+      roomId: room.id,
+      enrollmentIds: [student.enrollmentId],
+      amount: 40,
+    });
+
+    const here = await prisma.enrollment.findUniqueOrThrow({
+      where: { id: student.enrollmentId },
+    });
+    const there = await prisma.enrollment.findUniqueOrThrow({
+      where: { id: secondEnrollment.id },
+    });
+
+    expect(here.tokenBalance).toBe(40);
+    expect(there.tokenBalance).toBe(0);
+  });
+
+  it('is a no-op rather than an error when they are already in the room', async () => {
+    const student = await addStudent('Aisha Tan');
+
+    await addExistingStudents({
+      actor: educator,
+      roomId: room.id,
+      studentIds: [student.userId],
+      ip: testIp,
+    });
+
+    expect(await prisma.enrollment.count({ where: { roomId: room.id } })).toBe(1);
   });
 });
 
@@ -349,7 +429,12 @@ describe('importRoster', () => {
 
     expect(result.created).toHaveLength(3);
     expect(result.skipped).toHaveLength(0);
-    expect(new Set(result.created.map((r) => r.defaultPassword)).size).toBe(3);
+    // Every student now starts on the same known password, by explicit product
+    // decision — thirty distinct one-time passwords read aloud is the slowest
+    // part of a first lesson and the surest route to a locked account.
+    expect(new Set(result.created.map((r) => r.defaultPassword))).toEqual(
+      new Set([DEFAULT_STUDENT_PASSWORD]),
+    );
     expect(await listRoster(room.id)).toHaveLength(3);
   });
 

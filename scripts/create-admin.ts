@@ -14,7 +14,7 @@ import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { PrismaClient } from '@prisma/client';
 import { hashPassword, assertPasswordAllowed } from '../src/server/auth/password';
-import { generateDefaultPassword, normalizeIdentifier } from '../src/server/auth/identifiers';
+import { generateRandomPassword, normalizeIdentifier } from '../src/server/auth/identifiers';
 
 const prisma = new PrismaClient();
 
@@ -64,7 +64,7 @@ async function main(): Promise<void> {
   }
 
   const generated = typeof args.password !== 'string';
-  const password = generated ? generateDefaultPassword() + '-admin' : String(args.password);
+  const password = generated ? generateRandomPassword() + '-admin' : String(args.password);
   assertPasswordAllowed({ password, isStudent: false, forbidden: [email, displayName] });
 
   const passwordHash = await hashPassword(password);
