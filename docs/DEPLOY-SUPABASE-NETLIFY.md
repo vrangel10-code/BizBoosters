@@ -267,12 +267,53 @@ Optional: `RETENTION_DAYS` (default `548`, i.e. 18 months) controls when the
 nightly job starts *reporting* old rooms as reviewable. It never deletes
 anything by itself.
 
-> **Region.** Netlify → Site configuration → Build & deploy → you can pick the
-> functions region on paid plans. On the free plan functions run in
-> `us-east-1`, so a Singapore database means every draw crosses the Pacific
-> twice. It works — expect ~400 ms per draw rather than ~50 ms. If that feels
-> slow in class, the fix is to move the *database* to `us-east-1` too, not to
-> move Netlify.
+> **Region.** Netlify runs functions in a US region by default; choosing a
+> different one is a paid-plan setting. A database in Singapore therefore means
+> every query crosses the Pacific twice. It works, but it is the difference
+> between a page feeling instant and feeling slow, and it is what makes an
+> undersized connection pool fail rather than merely queue.
+>
+> Don't guess at this from region names — measure it, see below.
+
+### How far apart are they, really?
+
+The health endpoint times an actual query from the function to the database, so
+it answers this directly and needs no dashboards:
+
+```
+https://your-site.netlify.app/api/v1/health
+```
+
+```json
+{"status":"ok","checks":{"database":{"ok":true,"latency_ms":42}}}
+```
+
+**Reload it three or four times and take the lowest number** — the first hit
+after a quiet period includes waking the function and opening a connection, so
+it reads high and means nothing.
+
+| Lowest `latency_ms` | What it means |
+| --- | --- |
+| under ~30 | Same region. Nothing to do |
+| ~30–100 | Neighbouring regions. Fine |
+| ~150–300 | Opposite sides of an ocean. Works, but the room page's 10 queries cost 10 × this, so keep `connection_limit=5` |
+| over ~400, or wildly variable | Something is wrong beyond geography — a sleeping project, or the pooler under strain |
+
+To read the locations themselves:
+
+- **Database:** the region is in your connection string —
+  `aws-0-ap-southeast-1.pooler...` is Singapore, `us-east-1` is Virginia,
+  `us-east-2` is Ohio, `eu-west-1` is Ireland. Also shown at Supabase →
+  Project Settings → General. **It cannot be changed after the project is
+  created** — moving means a new project and restoring a backup into it.
+- **Functions:** Netlify → Site configuration → **Functions** (or Build &
+  deploy, depending on the version) → *Functions region*. If there is no such
+  setting, or it is greyed out, you are on the default US region and your plan
+  does not allow changing it.
+
+If the two are far apart and it bothers you, moving the *database* to match the
+functions is usually the cheaper fix — but only the educator's room page is
+heavy enough to notice, so measure before spending anything.
 
 ### Step 3.3 — Deploy, and name the site
 
