@@ -575,3 +575,33 @@ td.nowrap, th.nowrap { white-space: nowrap; }
     scroll-behavior: auto !important;
   }
 }
+
+/* ─── Password field with a reveal toggle ─────────────────────────────────── */
+/* The button sits inside the input's own box rather than beside it, so the
+   field still reads as one control and the tap target does not push the layout
+   around on a narrow phone. */
+.password-field { position: relative; display: block; }
+.password-field input { width: 100%; padding-right: 3rem; }
+.password-reveal {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 0 8px 8px 0;
+}
+.password-reveal:hover { color: var(--text); }
+.password-reveal:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* The input's own bottom margin would otherwise be measured into the wrapper
+   and push the button below centre. */
+.password-field input { margin-bottom: 0; }
+.password-field { margin-bottom: 1rem; }

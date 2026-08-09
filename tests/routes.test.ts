@@ -187,6 +187,75 @@ describe('first-login gate', () => {
     expect(me.body.must_change_password).toBe(false);
   });
 
+  /**
+   * The first change does not ask for the temporary password again — signing
+   * in with it is what created this session, so a retype only gives a child
+   * another chance to mistype a password read off a slip.
+   */
+  it('lets the forced first change omit the temporary password', async () => {
+    await createStudentAndSignIn();
+
+    const changed = await read(
+      await changePasswordRoute(
+        post('/auth/change-password', { new_password: 'aisha-picks-this' }),
+      ),
+    );
+
+    expect(changed.status).toBe(200);
+    expect((await read(await meRoute(get('/auth/me')))).body.must_change_password).toBe(false);
+  });
+
+  /**
+   * The other side of that: once the gate is lifted the session may be one
+   * left open on a shared classroom machine, so the current password is the
+   * only thing between a passer-by and taking the account over. It stays
+   * required, and is still checked.
+   */
+  it('still demands the current password for a voluntary change', async () => {
+    await createStudentAndSignIn();
+    await changePasswordRoute(post('/auth/change-password', { new_password: 'aisha-picks-this' }));
+
+    const omitted = await read(
+      await changePasswordRoute(post('/auth/change-password', { new_password: 'another-one-now' })),
+    );
+    expect(omitted.status).toBe(422);
+    expect(omitted.body.error?.code).toBe('validation_failed');
+
+    const wrong = await read(
+      await changePasswordRoute(
+        post('/auth/change-password', {
+          current_password: 'not-the-right-one',
+          new_password: 'another-one-now',
+        }),
+      ),
+    );
+    expect(wrong.body.error?.code).toBe('invalid_credentials');
+
+    const right = await read(
+      await changePasswordRoute(
+        post('/auth/change-password', {
+          current_password: 'aisha-picks-this',
+          new_password: 'another-one-now',
+        }),
+      ),
+    );
+    expect(right.status).toBe(200);
+  });
+
+  /** Keeping the temporary password would defeat the gate entirely. */
+  it('refuses a new password identical to the current one', async () => {
+    const credentials = await createStudentAndSignIn();
+
+    const { status, body } = await read(
+      await changePasswordRoute(
+        post('/auth/change-password', { new_password: credentials.default_password }),
+      ),
+    );
+
+    expect(status).toBe(422);
+    expect(body.error?.code).toBe('weak_password');
+  });
+
   it('rejects a weak replacement password with weak_password', async () => {
     const credentials = await createStudentAndSignIn();
 

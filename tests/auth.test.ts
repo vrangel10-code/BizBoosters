@@ -2,7 +2,13 @@ import { beforeEach, afterAll, describe, expect, it } from 'vitest';
 import type { School } from '@prisma/client';
 import { prisma, resetDatabase, createSchool, seedUser, testIp } from './helpers';
 import { login, changePassword } from '../src/server/services/auth-service';
-import { resolveSession, revokeAllSessionsForUser, hashToken } from '../src/server/auth/session';
+import {
+  createSession,
+  resolveSession,
+  revokeAllSessionsForUser,
+  hashToken,
+} from '../src/server/auth/session';
+import { verifyPassword } from '../src/server/auth/password';
 import { ApiError } from '../src/server/errors';
 
 let school: School;
@@ -348,13 +354,13 @@ describe('changePassword', () => {
     expect(await resolveSession(second.token)).not.toBeNull();
   });
 
-  it('requires the correct current password', async () => {
+  it('requires the correct current password for a voluntary change', async () => {
     const user = await seedUser({
       schoolId: school.id,
       role: 'student',
       loginId: 'apex-4821',
       password: 'maple-otter-473',
-      mustChangePassword: true,
+      mustChangePassword: false,
     });
 
     await expectApiError(
@@ -366,6 +372,67 @@ describe('changePassword', () => {
         ip: testIp,
       }),
       'invalid_credentials',
+    );
+
+    await expectApiError(
+      changePassword({
+        user,
+        newPassword: 'my-own-password',
+        currentSessionId: 'irrelevant',
+        ip: testIp,
+      }),
+      'validation_failed',
+    );
+  });
+
+  /**
+   * The forced first change is the exception, and it is deliberate: the session
+   * exists only because the temporary password was accepted moments ago, so
+   * asking for it again re-proves nothing and adds a step a child can fail.
+   */
+  it('does not ask for the temporary password during the forced first change', async () => {
+    const user = await seedUser({
+      schoolId: school.id,
+      role: 'student',
+      loginId: 'apex-4822',
+      password: 'maple-otter-473',
+      mustChangePassword: true,
+    });
+    await createSession({ userId: user.id, role: user.role, ip: testIp });
+    const session = await prisma.session.findFirstOrThrow({ where: { userId: user.id } });
+
+    await changePassword({
+      user,
+      newPassword: 'my-own-password',
+      currentSessionId: session.id,
+      ip: testIp,
+    });
+
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(after.mustChangePassword).toBe(false);
+    expect(await verifyPassword(after.passwordHash, 'my-own-password')).toBe(true);
+  });
+
+  /** Keeping the temporary password would defeat the gate. */
+  it('refuses a new password identical to the current one', async () => {
+    const user = await seedUser({
+      schoolId: school.id,
+      role: 'student',
+      loginId: 'apex-4823',
+      password: 'maple-otter-473',
+      mustChangePassword: true,
+    });
+    await createSession({ userId: user.id, role: user.role, ip: testIp });
+    const session = await prisma.session.findFirstOrThrow({ where: { userId: user.id } });
+
+    await expectApiError(
+      changePassword({
+        user,
+        newPassword: 'maple-otter-473',
+        currentSessionId: session.id,
+        ip: testIp,
+      }),
+      'weak_password',
     );
   });
 

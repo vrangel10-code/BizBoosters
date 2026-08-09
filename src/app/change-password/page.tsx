@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiRequestError } from '@/components/api';
+import PasswordField from '@/components/password-field';
 
 /**
  * Reached automatically at first login. The gate itself is enforced server-side
@@ -10,7 +11,6 @@ import { api, ApiRequestError } from '@/components/api';
  */
 export default function ChangePasswordPage() {
   const router = useRouter();
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -27,9 +27,11 @@ export default function ChangePasswordPage() {
 
     setBusy(true);
     try {
+      // No current_password: this page is only reachable behind the forced
+      // first-change gate, and signing in already proved the temporary one.
       await api('/auth/change-password', {
         method: 'POST',
-        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+        body: JSON.stringify({ new_password: newPassword }),
       });
       router.push('/');
       router.refresh();
@@ -45,7 +47,8 @@ export default function ChangePasswordPage() {
     <main className="shell">
       <h1>Choose your own password</h1>
       <p className="lede">
-        You are signed in with a password your teacher gave you. Pick your own before you carry on.
+        You are signed in with the password your teacher gave you. Choose your own to carry on —
+        you will not need the old one again.
       </p>
 
       <form className="panel" onSubmit={onSubmit}>
@@ -55,35 +58,22 @@ export default function ChangePasswordPage() {
           </p>
         ) : null}
 
-        <label htmlFor="current">Password your teacher gave you</label>
-        <input
-          id="current"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={currentPassword}
-          onChange={(event) => setCurrentPassword(event.target.value)}
-        />
-
-        <label htmlFor="next">New password</label>
-        <input
+        <PasswordField
           id="next"
-          type="password"
+          label="New password"
           autoComplete="new-password"
-          required
           value={newPassword}
-          onChange={(event) => setNewPassword(event.target.value)}
+          onChange={setNewPassword}
+          hint="At least 8 characters. Pick something you will remember."
+          autoFocus
         />
-        <p className="hint">At least 8 characters. Pick something you will remember.</p>
 
-        <label htmlFor="confirm">New password again</label>
-        <input
+        <PasswordField
           id="confirm"
-          type="password"
+          label="New password again"
           autoComplete="new-password"
-          required
           value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
+          onChange={setConfirmPassword}
         />
 
         <button type="submit" disabled={busy}>

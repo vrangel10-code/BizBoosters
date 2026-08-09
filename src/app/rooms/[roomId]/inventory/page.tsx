@@ -32,7 +32,7 @@ export default async function InventoryPage({
     <main className="shell wide">
       <div className="page-head">
         <div>
-          <h1>Your cards</h1>
+          <h1>Inventory</h1>
           <p className="lede">
             {totalCards === 0
               ? 'You have not collected any cards yet.'

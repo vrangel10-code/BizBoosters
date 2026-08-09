@@ -48,8 +48,8 @@ export default async function StudentRoomPage({
         </div>
         <nav className="page-nav">
           <Link href={`/rooms/${roomId}/draw`}>Open a lootbox</Link>
-          <Link href={`/rooms/${roomId}/inventory`}>Your cards</Link>
-          <Link href={`/rooms/${roomId}/cards`}>The deck</Link>
+          <Link href={`/rooms/${roomId}/inventory`}>Inventory</Link>
+          <Link href={`/rooms/${roomId}/cards`}>Deck List</Link>
           <Link href="/home">← All rooms</Link>
         </nav>
       </div>

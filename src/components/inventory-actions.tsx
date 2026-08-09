@@ -65,15 +65,6 @@ export default function InventoryActions({
       setSelected(new Set());
     });
 
-  const giveCardBack = (stack: InventoryStackView) =>
-    run(async () => {
-      const itemId = stack.item_ids[0];
-      if (!itemId) return;
-      await api(`/inventory/${itemId}/return`, { method: 'POST' });
-      setMessage(`${stack.name} went back into the deck.`);
-      setSelected(new Set());
-    });
-
   const toggle = (itemId: string) => {
     const next = new Set(selected);
     if (next.has(itemId)) next.delete(itemId);
@@ -139,12 +130,16 @@ export default function InventoryActions({
             <p className="deck-card-meta">{RARITY_LABEL[stack.rarity]}</p>
             {stack.effect_text ? <p className="deck-card-meta">{stack.effect_text}</p> : null}
 
+            {/*
+              Use is the only way out of a hand, by design. "Return" existed as
+              a symmetric counterpart and turned out to be a trap: it hands a
+              card back for nothing, and a student who taps it expecting an undo
+              has simply lost the card. The two legitimate exits — spending it,
+              or trading three up — are both here, and both give something back.
+            */}
             <div className="card-actions">
               <button className="link" disabled={busy} onClick={() => spendCard(stack)}>
                 Use
-              </button>
-              <button className="link" disabled={busy} onClick={() => giveCardBack(stack)}>
-                Return
               </button>
             </div>
 

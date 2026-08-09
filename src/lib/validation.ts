@@ -6,7 +6,13 @@ export const loginSchema = z.object({
 });
 
 export const changePasswordSchema = z.object({
-  current_password: z.string().min(1).max(200),
+  /**
+   * Optional only for the forced first-time change: the session already proves
+   * the temporary password was correct, so retyping it proves nothing and just
+   * gives a child another chance to mistype. The service still demands it for
+   * every voluntary change — see changePassword().
+   */
+  current_password: z.string().min(1).max(200).optional(),
   new_password: z.string().min(1).max(200),
 });
 

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiRequestError } from '@/components/api';
+import PasswordField from '@/components/password-field';
 
 interface LoginResponse {
   user: { role: string };
@@ -65,15 +66,12 @@ export default function LoginPage() {
           onChange={(event) => setIdentifier(event.target.value)}
         />
 
-        <label htmlFor="password">Password</label>
-        <input
+        <PasswordField
           id="password"
-          name="password"
-          type="password"
+          label="Password"
           autoComplete="current-password"
-          required
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={setPassword}
         />
 
         <button type="submit" disabled={busy}>

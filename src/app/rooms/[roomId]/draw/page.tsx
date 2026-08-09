@@ -31,7 +31,7 @@ export default async function DrawPage({ params }: { params: Promise<{ roomId: s
           <p className="lede">{context.room.name}</p>
         </div>
         <nav className="page-nav">
-          <Link href={`/rooms/${roomId}/inventory`}>Your cards</Link>
+          <Link href={`/rooms/${roomId}/inventory`}>Inventory</Link>
           <Link href={`/rooms/${roomId}/history`}>← Back</Link>
         </nav>
       </div>

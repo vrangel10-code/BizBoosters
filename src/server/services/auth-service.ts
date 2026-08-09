@@ -127,7 +127,8 @@ export async function login({
 
 export interface ChangePasswordInput {
   user: User;
-  currentPassword: string;
+  /** Absent is allowed only during the forced first change; see changePassword(). */
+  currentPassword?: string;
   newPassword: string;
   /** Kept alive so the user is not logged out by their own password change. */
   currentSessionId: string;
@@ -147,9 +148,32 @@ export async function changePassword({
     windowMs: 15 * 60 * 1000,
   });
 
-  const ok = await verifyPassword(user.passwordHash, currentPassword);
-  if (!ok) {
-    throw apiError('invalid_credentials', 'Your current password is not correct.');
+  /**
+   * The forced first change is the one case where the current password is not
+   * asked for again. Signing in with it is what created this session, so a
+   * retype re-proves nothing — it only adds a step where a twelve-year-old can
+   * mistype a password they were handed on a slip and be told they are wrong.
+   *
+   * A voluntary change is different: there the session may have been left open
+   * on a shared classroom machine, and the current password is the only thing
+   * standing between a passer-by and taking the account over. So it stays
+   * required, and is still verified, whenever the gate is not set.
+   */
+  if (!user.mustChangePassword) {
+    if (!currentPassword) {
+      throw apiError('validation_failed', 'Enter your current password.');
+    }
+    const ok = await verifyPassword(user.passwordHash, currentPassword);
+    if (!ok) {
+      throw apiError('invalid_credentials', 'Your current password is not correct.');
+    }
+  }
+
+  // Reusing the temporary password would defeat the whole gate, so it is
+  // rejected by comparing against the stored hash rather than against a
+  // plaintext we were not given.
+  if (await verifyPassword(user.passwordHash, newPassword)) {
+    throw apiError('weak_password', 'Choose a password different from your current one.');
   }
 
   assertPasswordAllowed({
