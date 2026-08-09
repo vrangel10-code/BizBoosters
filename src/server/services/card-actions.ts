@@ -339,14 +339,30 @@ export async function tradeUp(
       });
     }
 
-    // Surrender the three copies back to the deck.
+    // Surrender the copies back to the deck. One statement for all of them:
+    // the loop this replaces cost a round trip per card inside a transaction
+    // Prisma abandons after five seconds, which is survivable next to the
+    // database and not survivable across an ocean.
+    //
+    // Grouping by card id matters — trading three copies of the same card must
+    // return three, not one — and `copies_remaining < copies_total` still
+    // guards each row against exceeding what exists.
     await tx.inventoryItem.updateMany({
       where: { id: { in: itemIds } },
       data: { state: 'returned', returnedAt: new Date() },
     });
-    for (const item of items) {
-      await returnCopyToDeck(tx, room.id, item.cardId);
-    }
+    await tx.$executeRaw`
+      UPDATE room_cards rc
+         SET copies_remaining = LEAST(rc.copies_total, rc.copies_remaining + back.n)
+        FROM (
+          SELECT card_id, COUNT(*)::int AS n
+            FROM unnest(${items.map((item) => item.cardId)}::uuid[]) AS s(card_id)
+           GROUP BY card_id
+        ) AS back
+       WHERE rc.room_id = ${room.id}::uuid
+         AND rc.card_id = back.card_id
+         AND rc.copies_remaining < rc.copies_total
+    `;
 
     const roll = randomInt(poolSize);
     const picked = pickCopy(stock, roll);

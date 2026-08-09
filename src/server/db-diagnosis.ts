@@ -32,7 +32,12 @@ export type DatabaseFailure =
  *
  * Kept in sync by a test that reads the guide.
  */
-export const DOC_PLACEHOLDERS = ['abcdefghij', 'your-project-ref', 'your-region'] as const;
+export const DOC_PLACEHOLDERS = [
+  'abcdefghij',
+  'your-project-ref',
+  'your-region',
+  'new-ref',
+] as const;
 
 const HINTS: Record<DatabaseFailure, string> = {
   not_configured:

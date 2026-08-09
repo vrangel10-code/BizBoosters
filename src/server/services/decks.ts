@@ -200,80 +200,92 @@ export async function setDeck(
     throw apiError('not_found', 'One or more of those cards could not be found.');
   }
 
+  const totals = entries.map((entry) => entry.copies_total);
+
   const result = await prisma.$transaction(async (tx) => {
     await ensureRoomRarities(room.id, tx);
 
     const existing = await tx.roomCard.findMany({ where: { roomId: room.id } });
     const byCard = new Map(existing.map((row) => [row.cardId, row]));
 
-    const applied: SetDeckResult['applied'] = [];
+    // Capping is worked out here rather than from the statement's result
+    // because `existing` is already in hand — it costs no extra round trip and
+    // reports the requested figure, which the returned row no longer carries.
     const capped: SetDeckResult['capped'] = [];
-
     for (const entry of entries) {
       const current = byCard.get(entry.card_id);
-
-      if (!current) {
-        const created = await tx.roomCard.create({
-          data: {
-            roomId: room.id,
-            cardId: entry.card_id,
-            copiesTotal: entry.copies_total,
-            copiesRemaining: entry.copies_total,
-          },
-        });
-        applied.push({
-          card_id: entry.card_id,
-          copies_total: created.copiesTotal,
-          in_deck: created.copiesRemaining,
-        });
-        continue;
-      }
-
+      if (!current) continue;
       const held = current.copiesTotal - current.copiesRemaining;
-      let target = entry.copies_total;
-
-      if (target < held) {
-        // Reducing below what students hold would need reaching into their
-        // hands. Cap at `held` and say so.
+      if (entry.copies_total < held) {
         capped.push({
           card_id: entry.card_id,
           requested: entry.copies_total,
           applied: held,
           held,
         });
-        target = held;
       }
-
-      const delta = target - current.copiesTotal;
-      const updated = await tx.roomCard.update({
-        where: { id: current.id },
-        data: {
-          copiesTotal: target,
-          copiesRemaining: current.copiesRemaining + delta,
-        },
-      });
-
-      applied.push({
-        card_id: entry.card_id,
-        copies_total: updated.copiesTotal,
-        in_deck: updated.copiesRemaining,
-      });
     }
+
+    /**
+     * One statement for the whole deck, not one per card.
+     *
+     * This used to be a loop, which is fine beside the database and fatal
+     * across an ocean: twenty cards meant twenty sequential round trips inside
+     * a transaction Prisma abandons after five seconds.
+     *
+     * GREATEST(requested, held) is the cap — reducing a card below the copies
+     * students are holding would mean reaching into their hands, so the
+     * request is honoured only down to that floor. `copies_remaining` moves by
+     * the same delta as `copies_total`, which is what keeps
+     * total = in_deck + held true through an edit (MECHANICS §3.1).
+     */
+    const appliedRows = await tx.$queryRaw<
+      { card_id: string; copies_total: number; copies_remaining: number }[]
+    >`
+      INSERT INTO room_cards (id, room_id, card_id, copies_total, copies_remaining)
+      SELECT gen_random_uuid(), ${room.id}::uuid, t.card_id, t.total, t.total
+        FROM unnest(${cardIds}::uuid[], ${totals}::int[]) AS t(card_id, total)
+      ON CONFLICT (room_id, card_id) DO UPDATE
+        SET copies_total = GREATEST(
+              EXCLUDED.copies_total,
+              room_cards.copies_total - room_cards.copies_remaining
+            ),
+            copies_remaining = room_cards.copies_remaining
+              + GREATEST(
+                  EXCLUDED.copies_total,
+                  room_cards.copies_total - room_cards.copies_remaining
+                )
+              - room_cards.copies_total
+      RETURNING card_id, copies_total, copies_remaining
+    `;
+
+    const appliedByCard = new Map(appliedRows.map((row) => [row.card_id, row]));
+    const applied: SetDeckResult['applied'] = entries.map((entry) => {
+      const row = appliedByCard.get(entry.card_id);
+      return {
+        card_id: entry.card_id,
+        copies_total: row?.copies_total ?? entry.copies_total,
+        in_deck: row?.copies_remaining ?? entry.copies_total,
+      };
+    });
 
     // Cards left out of the request drop to zero in the deck but keep any
-    // copies students hold, which leave circulation as they are used.
-    const omitted = existing.filter((row) => !cardIds.includes(row.cardId));
-    for (const row of omitted) {
-      const held = row.copiesTotal - row.copiesRemaining;
-      if (held === 0) {
-        await tx.roomCard.delete({ where: { id: row.id } });
-      } else {
-        await tx.roomCard.update({
-          where: { id: row.id },
-          data: { copiesTotal: held, copiesRemaining: 0 },
-        });
-      }
-    }
+    // copies students hold, which leave circulation as they are used. Two
+    // statements for the whole set, for the same reason as above.
+    await tx.$executeRaw`
+      DELETE FROM room_cards
+       WHERE room_id = ${room.id}::uuid
+         AND card_id <> ALL(${cardIds}::uuid[])
+         AND copies_total = copies_remaining
+    `;
+    await tx.$executeRaw`
+      UPDATE room_cards
+         SET copies_total = copies_total - copies_remaining,
+             copies_remaining = 0
+       WHERE room_id = ${room.id}::uuid
+         AND card_id <> ALL(${cardIds}::uuid[])
+         AND copies_total <> copies_remaining
+    `;
 
     await recordActivity(
       {
