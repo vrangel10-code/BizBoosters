@@ -267,11 +267,31 @@ Optional: `RETENTION_DAYS` (default `548`, i.e. 18 months) controls when the
 nightly job starts *reporting* old rooms as reviewable. It never deletes
 anything by itself.
 
-> **Region.** Netlify runs functions in a US region by default; choosing a
-> different one is a paid-plan setting. A database in Singapore therefore means
-> every query crosses the Pacific twice. It works, but it is the difference
-> between a page feeling instant and feeling slow, and it is what makes an
-> undersized connection pool fail rather than merely queue.
+> **Region — there are three locations, not two.** Your users, the functions
+> running the app, and the database. Latency is set by the gaps between all
+> three, and the one most easily forgotten is the middle one: Netlify runs
+> functions in a US region by default, and choosing another is a paid-plan
+> setting.
+>
+> For a school in Kuala Lumpur that default is the whole problem. A page load
+> costs one round trip from the browser to the function, plus one per wave of
+> queries from the function to the database. Approximate round trips:
+>
+> | Where the app runs | Where the database is | Rough page cost |
+> | --- | --- | --- |
+> | US East | Tokyo | ~220 + 3×170 = **~730 ms** |
+> | US East | US East | ~220 + 3×2 = **~230 ms** |
+> | Singapore | Tokyo | ~15 + 3×70 = **~230 ms** |
+> | Singapore | Singapore | ~15 + 3×2 = **~20 ms** |
+>
+> The lesson is not "pick a region near your students" — it is **keep the app
+> and the database together, then put that pair near your users**. Splitting
+> them is what costs whole seconds, because that gap is paid once per wave
+> rather than once per page.
+>
+> A Supabase project's region cannot be changed after creation; moving means a
+> new project and a restore. Do it while there is no data to lose, or not at
+> all.
 >
 > Don't guess at this from region names — measure it, see below.
 
