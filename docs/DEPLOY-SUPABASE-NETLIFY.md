@@ -100,7 +100,7 @@ Copy both pooler strings into a scratch file and replace `[YOUR-PASSWORD]` with
 the password from Step 1.1. Then **append this to the transaction pooler one**:
 
 ```
-?pgbouncer=true&connection_limit=1
+?pgbouncer=true&connection_limit=5&pool_timeout=20
 ```
 
 So you end up with two strings shaped like this (yours will differ — always
@@ -108,7 +108,7 @@ copy the real hostname from the dashboard, never retype it from here):
 
 ```
 # For Netlify — the app
-postgresql://postgres.YOUR-PROJECT-REF:YOUR-PASSWORD@aws-0-YOUR-REGION.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
+postgresql://postgres.YOUR-PROJECT-REF:YOUR-PASSWORD@aws-0-YOUR-REGION.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=5&pool_timeout=20
 
 # For your laptop — migrations and admin
 postgresql://postgres.YOUR-PROJECT-REF:YOUR-PASSWORD@aws-0-YOUR-REGION.pooler.supabase.com:5432/postgres
@@ -124,10 +124,20 @@ the app works in testing and then throws
 `prepared statement "s0" already exists` the moment a second student clicks
 draw.
 
-> A note on `connection_limit=1`: each function instance keeps a pool of one
-> connection. That sounds tiny and is correct — the concurrency comes from
-> having many function instances, and a larger per-instance pool just exhausts
-> the pooler faster.
+> **A note on `connection_limit`.** The common advice for serverless is a pool
+> of one, on the grounds that concurrency comes from having many function
+> instances. That is wrong for this app, and the room page is why: it loads the
+> roster, the activity log, recent card uses, the deck odds, who is holding
+> what, and the unread count **at the same time** — 10 queries in one render.
+> A pool of one turns those into a queue ten deep, and each place in the queue
+> costs a full round trip to the database. On a laptop that is invisible; with
+> functions in Virginia and a database in Singapore it is seconds, and
+> intermittent `Timed out fetching a new connection from the connection pool`
+> failures on exactly that page.
+>
+> Five is enough to cover the widest fan-out with room to spare, and
+> `pool_timeout=20` gives a cold start time to finish rather than failing at
+> Prisma's default 10 seconds.
 
 ### Step 1.3 — Create the tables
 
@@ -241,7 +251,7 @@ invisible to them.
 
 | Variable | Value |
 | --- | --- |
-| `DATABASE_URL` | The **transaction pooler** string from Step 1.2, ending in `?pgbouncer=true&connection_limit=1` |
+| `DATABASE_URL` | The **transaction pooler** string from Step 1.2, ending in `?pgbouncer=true&connection_limit=5&pool_timeout=20` |
 | `APP_URL` | `https://<your-site>.netlify.app` — come back and fix this after Step 3.3 |
 | `SESSION_COOKIE_NAME` | `bb_session` |
 | `CRON_SECRET` | A long random string. Generate with `openssl rand -hex 32` |
@@ -603,11 +613,12 @@ hazard, not a capacity one.
 | Build succeeds but every page errors | The build genuinely does not need `DATABASE_URL` — nothing connects until a request arrives. A green build proves nothing about your variables; the health check in Step 3.3 is what proves them |
 | Build fails: `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` | `packageManager` in `package.json` pins pnpm 10 for this reason. If you have bumped it to 11, regenerate the lockfile in the same commit |
 | Site loads but says "Site not found" | A build published nothing. Check that nobody set `BUILD_STANDALONE` in Netlify's environment — that flag is for the Docker image only and breaks Netlify's runtime |
-| `/api/v1/health` returns a database error | Wrong connection string. Ports matter: **6543** for the app, and the string must end in `?pgbouncer=true&connection_limit=1` |
+| `/api/v1/health` returns a database error | Wrong connection string. Ports matter: **6543** for the app, and the string must end in `?pgbouncer=true&connection_limit=5&pool_timeout=20` |
 | `prepared statement "s0" already exists` | `pgbouncer=true` is missing from `DATABASE_URL` |
 | `Can't reach database server` from your laptop | You used the **direct** connection (IPv6-only). Use the session pooler string, port 5432 |
 | `prisma migrate deploy` hangs or errors about advisory locks | You pointed it at the transaction pooler (6543). Migrations need the session pooler (5432) |
-| `Timed out fetching a new connection from the connection pool` | Raise `connection_limit` to 3 and add `&pool_timeout=20`. If it persists, the database is asleep — see the pause note above |
+| `Timed out fetching a new connection from the connection pool` | `connection_limit` is too low for a page that fans out — use `connection_limit=5&pool_timeout=20`. If it persists, the database is asleep, or your functions and database are on opposite sides of the world (see the region note in Step 3.2) |
+| A page works, then intermittently shows "Something went wrong" | Almost always the pool, as above. The room page issues 10 queries at once; anything smaller than 5 queues them and a slow round trip turns the queue into a timeout. Quote the code shown on the error page and search **Logs → Functions** for it |
 | `Query engine ... rhel-openssl-3.0.x could not be found` | The Prisma engine did not get bundled. `binaryTargets` in `prisma/schema.prisma` should include `rhel-openssl-3.0.x`; if it does, clear the Netlify build cache and redeploy |
 | Everything works, then breaks after a holiday | The Supabase project paused. Open the dashboard to wake it |
 | Card image upload fails | See below |
@@ -1019,7 +1030,7 @@ Notepad on Windows — and build up the block below, replacing every `PASTE...`
 with your real value. Do not add spaces around the `=` signs.
 
 ```
-DATABASE_URL=PASTE THE TRANSACTION POOLER STRING (PORT 6543) WITH ?pgbouncer=true&connection_limit=1 ON THE END
+DATABASE_URL=PASTE THE TRANSACTION POOLER STRING (PORT 6543) WITH ?pgbouncer=true&connection_limit=5&pool_timeout=20 ON THE END
 APP_URL=PASTE YOUR https://...netlify.app ADDRESS FROM B.5
 SESSION_COOKIE_NAME=bb_session
 CRON_SECRET=PASTE THE 64 CHARACTERS FROM B.6
@@ -1100,7 +1111,7 @@ can reach your Supabase database. A different number after `latency_ms` is fine.
 
 | What you see instead | What it means |
 | --- | --- |
-| `"error"` mentioning the database, or a 500 page | `DATABASE_URL` is wrong. Nine times in ten it is the 5432 string where the 6543 one belongs, or `?pgbouncer=true&connection_limit=1` is missing from the end |
+| `"error"` mentioning the database, or a 500 page | `DATABASE_URL` is wrong. Nine times in ten it is the 5432 string where the 6543 one belongs, or `?pgbouncer=true&connection_limit=5&pool_timeout=20` is missing from the end |
 | "Page not found" | The build did not publish. Check **Deploys** — the newest one should say Published |
 | It hangs, then errors | The Supabase project is asleep. Open the Supabase dashboard, wait a minute, reload |
 

@@ -140,7 +140,7 @@ will now show a real error rather than an empty publish.
 **A database.** Netlify does not provide one. [Supabase](https://supabase.com)
 and [Neon](https://neon.tech) both have free tiers and speak plain Postgres —
 create a project, copy the **transaction pooler** connection string, append
-`?pgbouncer=true&connection_limit=1`, and set it as `DATABASE_URL` in Netlify →
+`?pgbouncer=true&connection_limit=5&pool_timeout=20`, and set it as `DATABASE_URL` in Netlify →
 Site configuration → Environment variables. Also set `APP_URL`,
 `SESSION_COOKIE_NAME` and `CRON_SECRET`.
 
