@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { readSessionCookie, resolveSession } from '@/server/auth/session';
 import { listRoomsForStudent } from '@/server/services/rooms';
 import SignOutButton from '@/components/sign-out-button';
+import Brand from '@/components/brand';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,7 @@ export default async function StudentHomePage() {
     <main className="shell wide">
       <div className="page-head">
         <div>
+          <Brand />
           <h1>Hi, {session.user.displayName}</h1>
           <p className="lede">
             {rooms.length === 0

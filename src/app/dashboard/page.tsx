@@ -4,6 +4,7 @@ import { readSessionCookie, resolveSession } from '@/server/auth/session';
 import { listRoomsForEducator } from '@/server/services/rooms';
 import SignOutButton from '@/components/sign-out-button';
 import CreateRoomForm from '@/components/create-room-form';
+import Brand from '@/components/brand';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,7 @@ export default async function DashboardPage() {
     <main className="shell wide">
       <div className="page-head">
         <div>
+          <Brand />
           <h1>Your rooms</h1>
           <p className="lede">Signed in as {session.user.displayName}.</p>
         </div>

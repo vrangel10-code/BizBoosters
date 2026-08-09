@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiRequestError } from '@/components/api';
 import PasswordField from '@/components/password-field';
+import Brand from '@/components/brand';
 
 interface LoginResponse {
   user: { role: string };
@@ -44,7 +45,10 @@ export default function LoginPage() {
 
   return (
     <main className="shell">
-      <h1>Sign in to BizBoosters</h1>
+      <div className="brand-header">
+        <Brand size="lg" showName={false} />
+        <h1>Sign in to BizBoosters</h1>
+      </div>
       <p className="lede">Students use their login ID. Teachers use their email address.</p>
 
       <form className="panel" onSubmit={onSubmit}>

@@ -606,3 +606,247 @@ export async function heldByStudent(roomId: string) {
     held: row.held,
   }));
 }
+
+// ─── Educator view of every hand ─────────────────────────────────────────────
+
+export interface HeldCardStack {
+  card_id: string;
+  card_name: string;
+  rarity: RarityCode;
+  count: number;
+  item_ids: string[];
+}
+
+export interface StudentHand {
+  enrollment_id: string;
+  student_name: string;
+  login_id: string | null;
+  token_balance: number;
+  held: number;
+  stacks: HeldCardStack[];
+}
+
+/**
+ * Who is holding what, for the whole room.
+ *
+ * `heldByStudent` answers only "how many", which is enough for the deck summary
+ * and useless for the question an educator actually asks — *which* card is
+ * sitting in someone's hand. This returns the cards themselves, in one query,
+ * grouped in memory rather than with a query per student.
+ *
+ * Every active student appears, including those holding nothing, because "who
+ * has drawn nothing yet" is as much a teaching signal as who is hoarding.
+ */
+export async function handsByStudent(roomId: string): Promise<StudentHand[]> {
+  const [enrollments, rows] = await Promise.all([
+    prisma.enrollment.findMany({
+      where: { roomId, status: 'active' },
+      select: {
+        id: true,
+        tokenBalance: true,
+        student: { select: { displayName: true, loginId: true } },
+      },
+    }),
+    prisma.$queryRaw<
+      {
+        enrollment_id: string;
+        card_id: string;
+        card_name: string;
+        rarity: RarityCode;
+        item_ids: string[];
+      }[]
+    >`
+      SELECT i.enrollment_id            AS enrollment_id,
+             i.card_id                  AS card_id,
+             c.name                     AS card_name,
+             c.rarity::text             AS rarity,
+             array_agg(i.id ORDER BY i.acquired_at) AS item_ids
+        FROM inventory_items i
+        JOIN cards c ON c.id = i.card_id
+       WHERE i.room_id = ${roomId}::uuid
+         AND i.state = 'owned'
+       GROUP BY i.enrollment_id, i.card_id, c.name, c.rarity
+       ORDER BY c.rarity, c.name
+    `,
+  ]);
+
+  const stacksFor = new Map<string, HeldCardStack[]>();
+  for (const row of rows) {
+    const list = stacksFor.get(row.enrollment_id) ?? [];
+    list.push({
+      card_id: row.card_id,
+      card_name: row.card_name,
+      rarity: row.rarity,
+      count: row.item_ids.length,
+      item_ids: row.item_ids,
+    });
+    stacksFor.set(row.enrollment_id, list);
+  }
+
+  return enrollments
+    .map((enrollment) => {
+      const stacks = stacksFor.get(enrollment.id) ?? [];
+      return {
+        enrollment_id: enrollment.id,
+        student_name: enrollment.student.displayName,
+        login_id: enrollment.student.loginId,
+        token_balance: enrollment.tokenBalance,
+        held: stacks.reduce((sum, stack) => sum + stack.count, 0),
+        stacks,
+      };
+    })
+    .sort((a, b) => b.held - a.held || a.student_name.localeCompare(b.student_name));
+}
+
+/**
+ * Give a specific card to a specific student, taking the copy out of the deck.
+ *
+ * The deck is finite and conserved, so this is a move rather than a creation:
+ * it fails when no copy is free rather than minting one, which is what keeps
+ * `copies_total = in deck + held` true. It is the counterpart to taking a card
+ * back, and exists for the ordinary classroom cases a draw cannot express — a
+ * prize, a correction, a card handed out for something done offline.
+ */
+export async function grantCard(
+  actor: User,
+  room: Room,
+  enrollmentId: string,
+  cardId: string,
+): Promise<{ itemId: string; card: CardSummary }> {
+  if (room.status === 'archived') {
+    throw apiError('room_archived', 'This room has been archived.');
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${room.id}, 0))`;
+
+    const enrollment = await tx.enrollment.findFirst({
+      where: { id: enrollmentId, roomId: room.id, status: 'active' },
+    });
+    if (!enrollment) throw apiError('not_found', 'That student is not in this room.');
+
+    // Conditional on a copy being free, so two educators granting the last one
+    // cannot both succeed.
+    const taken = await tx.$executeRaw`
+      UPDATE room_cards
+         SET copies_remaining = copies_remaining - 1
+       WHERE room_id = ${room.id}::uuid
+         AND card_id = ${cardId}::uuid
+         AND copies_remaining > 0
+    `;
+    if (taken === 0) {
+      throw apiError('pool_empty', 'There are no copies of that card left in the deck.');
+    }
+
+    const card = await tx.card.findUniqueOrThrow({ where: { id: cardId } });
+
+    const item = await tx.inventoryItem.create({
+      data: {
+        enrollmentId,
+        roomId: room.id,
+        cardId,
+        state: 'owned',
+        acquiredVia: 'educator_grant',
+      },
+    });
+
+    const event = await tx.activityEvent.create({
+      data: {
+        roomId: room.id,
+        type: 'card.granted',
+        actorUserId: actor.id,
+        subjectEnrollmentId: enrollmentId,
+        payload: { card_id: card.id, card_name: card.name, rarity: card.rarity },
+      },
+    });
+
+    return {
+      itemId: item.id,
+      card: {
+        id: card.id,
+        name: card.name,
+        rarity: card.rarity,
+        effect_text: card.effectText,
+        image_url: cardImageUrl(card.imageKey),
+      },
+      eventId: event.id,
+    };
+  });
+
+  const odds = await getDeckOdds(room);
+  publishAfterCommit([
+    { kind: 'room.pool_changed', roomId: room.id, data: { odds, cause: 'card.granted' } },
+  ]);
+  await evaluateLowStock(room.id).catch(() => undefined);
+
+  return { itemId: result.itemId, card: result.card };
+}
+
+/**
+ * Take a card out of a student's hand and put the copy back in the deck.
+ *
+ * Deliberately separate from the student's own `returnCard`: this one is scoped
+ * by room rather than by enrolment, because an educator acts on any hand in the
+ * room, and it records who did it so the student's history shows the card was
+ * taken rather than given up.
+ */
+export async function revokeCard(
+  actor: User,
+  room: Room,
+  itemId: string,
+): Promise<{ itemId: string; card: CardSummary }> {
+  if (room.status === 'archived') {
+    throw apiError('room_archived', 'This room has been archived.');
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${room.id}, 0))`;
+
+    const item = await tx.inventoryItem.findUnique({
+      where: { id: itemId },
+      include: { card: true },
+    });
+    if (!item || item.roomId !== room.id) {
+      throw apiError('not_found', 'That card is not in this room.');
+    }
+
+    const claimed = await tx.inventoryItem.updateMany({
+      where: { id: itemId, state: 'owned' },
+      data: { state: 'revoked', returnedAt: new Date() },
+    });
+    if (claimed.count === 0) {
+      throw apiError('item_state_conflict', 'That card is no longer in their collection.');
+    }
+
+    await returnCopyToDeck(tx, room.id, item.cardId);
+
+    const event = await tx.activityEvent.create({
+      data: {
+        roomId: room.id,
+        type: 'card.revoked',
+        actorUserId: actor.id,
+        subjectEnrollmentId: item.enrollmentId,
+        payload: { card_id: item.cardId, card_name: item.card.name, rarity: item.card.rarity },
+      },
+    });
+
+    return {
+      itemId,
+      card: {
+        id: item.card.id,
+        name: item.card.name,
+        rarity: item.card.rarity,
+        effect_text: item.card.effectText,
+        image_url: cardImageUrl(item.card.imageKey),
+      },
+      eventId: event.id,
+    };
+  });
+
+  const odds = await getDeckOdds(room);
+  publishAfterCommit([
+    { kind: 'room.pool_changed', roomId: room.id, data: { odds, cause: 'card.revoked' } },
+  ]);
+
+  return { itemId: result.itemId, card: result.card };
+}

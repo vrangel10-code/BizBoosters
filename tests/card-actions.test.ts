@@ -10,7 +10,10 @@ import { awardTokens } from '../src/server/services/tokens';
 import { drawCard, listInventory } from '../src/server/services/draws';
 import {
   acknowledgeUse,
+  grantCard,
+  handsByStudent,
   heldByStudent,
+  revokeCard,
   listRecentUses,
   returnCard,
   tradeUp,
@@ -536,5 +539,111 @@ describe('notifications', () => {
     expect((await listNotifications(educator.id)).unread).toBeGreaterThan(0);
     await markRead(educator.id, { all: true });
     expect((await listNotifications(educator.id)).unread).toBe(0);
+  });
+});
+
+/**
+ * The educator's view of every hand, and the two edits that go with it.
+ *
+ * Both edits *move* a copy — the deck is finite and conserved, so granting must
+ * fail rather than mint, and taking back must return rather than destroy. Those
+ * are the assertions that matter here; the listing is the easy half.
+ */
+describe('handsByStudent / grantCard / revokeCard', () => {
+  let commonCardId: string;
+
+  beforeEach(async () => {
+    commonCardId = (await card('Snack Rush', 'C', 5)).id;
+  });
+
+  const enrollStudent = (name: string) => addStudent(name, 0);
+
+  it('lists every active student, including one holding nothing', async () => {
+    const holder = await enrollStudent('Aisha Tan');
+    await enrollStudent('Ben Cole');
+    await grantCard(educator, room, holder.enrollmentId, commonCardId);
+
+    const hands = await handsByStudent(room.id);
+
+    expect(hands).toHaveLength(2);
+    const byName = new Map(hands.map((row) => [row.student_name, row]));
+    expect(byName.get('Aisha Tan')?.held).toBe(1);
+    expect(byName.get('Aisha Tan')?.stacks[0]?.card_name).toBeTruthy();
+    expect(byName.get('Ben Cole')?.held).toBe(0);
+    expect(byName.get('Ben Cole')?.stacks).toEqual([]);
+  });
+
+  it('stacks multiple copies of one card under a single row', async () => {
+    const student = await enrollStudent('Aisha Tan');
+    await grantCard(educator, room, student.enrollmentId, commonCardId);
+    await grantCard(educator, room, student.enrollmentId, commonCardId);
+
+    const [hand] = await handsByStudent(room.id);
+    expect(hand?.stacks).toHaveLength(1);
+    expect(hand?.stacks[0]?.count).toBe(2);
+    expect(hand?.stacks[0]?.item_ids).toHaveLength(2);
+  });
+
+  it('takes the granted copy out of the deck rather than minting one', async () => {
+    const student = await enrollStudent('Aisha Tan');
+    const before = await getDeckOdds(room);
+
+    await grantCard(educator, room, student.enrollmentId, commonCardId);
+    const after = await getDeckOdds(room);
+
+    expect(after.total).toBe(before.total);
+    expect(after.in_deck).toBe(before.in_deck - 1);
+    expect(after.held).toBe(before.held + 1);
+  });
+
+  it('refuses to grant a card the deck has none of', async () => {
+    const student = await enrollStudent('Aisha Tan');
+    await prisma.roomCard.updateMany({
+      where: { roomId: room.id, cardId: commonCardId },
+      data: { copiesRemaining: 0 },
+    });
+
+    await expectApiError(
+      grantCard(educator, room, student.enrollmentId, commonCardId),
+      'pool_empty',
+    );
+  });
+
+  it('returns a revoked copy to the deck and leaves the totals alone', async () => {
+    const student = await enrollStudent('Aisha Tan');
+    const granted = await grantCard(educator, room, student.enrollmentId, commonCardId);
+    const before = await getDeckOdds(room);
+
+    await revokeCard(educator, room, granted.itemId);
+    const after = await getDeckOdds(room);
+
+    expect(after.total).toBe(before.total);
+    expect(after.in_deck).toBe(before.in_deck + 1);
+    expect(after.held).toBe(before.held - 1);
+    expect(await handsByStudent(room.id).then((rows) => rows[0]?.held)).toBe(0);
+  });
+
+  it('cannot revoke the same copy twice', async () => {
+    const student = await enrollStudent('Aisha Tan');
+    const granted = await grantCard(educator, room, student.enrollmentId, commonCardId);
+
+    await revokeCard(educator, room, granted.itemId);
+    await expectApiError(revokeCard(educator, room, granted.itemId), 'item_state_conflict');
+  });
+
+  it('records both edits in the room log, naming the card', async () => {
+    const student = await enrollStudent('Aisha Tan');
+    const granted = await grantCard(educator, room, student.enrollmentId, commonCardId);
+    await revokeCard(educator, room, granted.itemId);
+
+    const events = await prisma.activityEvent.findMany({
+      where: { roomId: room.id, subjectEnrollmentId: student.enrollmentId },
+    });
+    const types = events.map((event) => event.type);
+    expect(types).toContain('card.granted');
+    expect(types).toContain('card.revoked');
+    for (const event of events.filter((row) => row.type.startsWith('card.'))) {
+      expect((event.payload as { card_name?: string }).card_name).toBeTruthy();
+    }
   });
 });

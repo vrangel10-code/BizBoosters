@@ -681,3 +681,46 @@ a.lootbox:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px;
 }
 .pick-list li { margin: 0; }
 .pick-list code { color: var(--muted); font-size: 0.8125rem; }
+
+/* ─── Who holds what ──────────────────────────────────────────────────────── */
+.hand-list { list-style: none; margin: 0; padding: 0; }
+.hand { border-top: 1px solid var(--border); }
+.hand:first-child { border-top: 0; }
+.hand-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 0.25rem;
+  margin: 0;
+  background: none;
+  border: 0;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.hand-head:hover { color: var(--accent); }
+.hand-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.hand-name { font-weight: 600; }
+.hand-meta { flex: 1; color: var(--muted); font-size: 0.8125rem; }
+.hand-body { padding: 0 0.25rem 1rem; }
+.hand-body table { margin-bottom: 1rem; }
+
+/* ─── Brand ───────────────────────────────────────────────────────────────── */
+.brand { display: flex; align-items: center; gap: 0.75rem; }
+.brand-mark { display: block; object-fit: contain; }
+.brand-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  background: linear-gradient(90deg, var(--lootbox-lid), var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* The sign-in page stacks and centres instead, so the mark is the first thing
+   seen rather than something beside a heading. */
+.brand-header { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+.brand-header h1 { margin: 0 0 0.5rem; text-align: center; }
+.brand-lg .brand-mark { width: 96px; height: 96px; }

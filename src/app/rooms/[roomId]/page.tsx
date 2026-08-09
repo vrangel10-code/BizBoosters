@@ -7,11 +7,12 @@ import { listActivity } from '@/server/services/activity';
 import { ApiError } from '@/server/errors';
 import RoomManager from '@/components/room-manager';
 import RoomSettings from '@/components/room-settings';
+import StudentHands from '@/components/student-hands';
 import ActivityFeed from '@/components/activity-feed';
 import NotificationBell from '@/components/notification-bell';
 import RecentUses from '@/components/recent-uses';
-import { listRecentUses, heldByStudent } from '@/server/services/card-actions';
-import { getDeckOdds } from '@/server/services/decks';
+import { listRecentUses, handsByStudent } from '@/server/services/card-actions';
+import { getDeck, getDeckOdds } from '@/server/services/decks';
 import { unreadCount } from '@/server/services/notifications';
 
 export const dynamic = 'force-dynamic';
@@ -32,12 +33,13 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
     },
   );
 
-  const [roster, activity, uses, odds, held, unread] = await Promise.all([
+  const [roster, activity, uses, odds, hands, deck, unread] = await Promise.all([
     listRoster(roomId),
     listActivity({ roomId, limit: 40 }),
     listRecentUses(roomId, { limit: 25 }),
     getDeckOdds(context.room),
-    heldByStudent(roomId),
+    handsByStudent(roomId),
+    getDeck(roomId),
     unreadCount(session.user.id),
   ]);
 
@@ -81,8 +83,9 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
       {odds.is_empty && odds.total > 0 ? (
         <p className="alert error" role="alert">
           The deck is empty — every copy is in a student&apos;s hand. It refills as cards get used.
-          {held.length > 0
-            ? ` Holding most: ${held
+          {hands.length > 0
+            ? ` Holding most: ${hands
+                .filter((row) => row.held > 0)
                 .slice(0, 3)
                 .map((row) => `${row.student_name} (${row.held})`)
                 .join(', ')}.`
@@ -93,6 +96,17 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
       <RecentUses roomId={roomId} uses={uses} />
 
       <div style={{ marginTop: '1.5rem' }}>
+        <StudentHands
+          roomId={roomId}
+          hands={hands}
+          deck={deck.map((entry) => ({
+            card_id: entry.card_id,
+            name: entry.name,
+            rarity: entry.rarity,
+            in_deck: entry.in_deck,
+          }))}
+        />
+
         <RoomManager roomId={roomId} roster={roster} />
 
         <RoomSettings

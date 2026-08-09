@@ -65,6 +65,10 @@ export function describeActivity(row: ActivityRowLike): string {
       return `used ${card ?? 'a card'}${suffix}`;
     case 'card.returned':
       return `returned ${card ?? 'a card'} to the deck`;
+    case 'card.granted':
+      return `was given ${card ?? 'a card'} by their teacher`;
+    case 'card.revoked':
+      return `had ${card ?? 'a card'} taken back into the deck`;
     case 'card.traded': {
       const gave = Array.isArray(payload.gave_up)
         ? payload.gave_up.filter((value): value is string => typeof value === 'string')
