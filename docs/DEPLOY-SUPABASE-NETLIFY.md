@@ -845,6 +845,14 @@ This downloads a few hundred libraries and takes **2–5 minutes**. You'll see
 scrolling text and a progress bar. It ends with something like
 `Done in 2m 14s`. Yellow warnings are normal; only red errors matter.
 
+Installing also builds the database client the next two commands need. If you
+ever see **`@prisma/client did not initialize yet`**, that build did not happen
+— run this once and carry on:
+
+```
+pnpm prisma generate
+```
+
 ### A.8 — Create the tables (this is Step 1.3)
 
 ```
@@ -900,6 +908,7 @@ That is the entire maintenance routine.
 | `running scripts is disabled on this system` | Windows blocks new commands by default | Run the `Set-ExecutionPolicy` line in A.3 |
 | `no such file or directory: package.json` | The terminal is in the wrong folder | Redo A.5, dragging the folder that contains `package.json` |
 | `Environment variable not found: DATABASE_URL` | The `.env` file is missing, misnamed, or in the wrong folder | It must be called exactly `.env`, in the same folder as `package.json`. On Windows, check Notepad didn't save it as `.env.txt` |
+| `@prisma/client did not initialize yet` | The database client was never built from the schema | Run `pnpm prisma generate`, then repeat the command that failed |
 | `Can't reach database server` | Wrong host, or the project is asleep | Open the Supabase dashboard to wake the project, then retry. Check you pasted the whole string |
 | `password authentication failed` | Wrong password, or it has symbols | Redo A.0 — reset to a letters-and-numbers password and update `.env` |
 | `Error: P1010` / permission denied | You used the wrong connection string | It must be the session pooler, port **5432** |

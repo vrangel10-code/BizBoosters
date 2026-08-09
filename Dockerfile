@@ -16,7 +16,10 @@ RUN corepack enable && corepack prepare --activate
 # ─── Dependencies ────────────────────────────────────────────────────────────
 FROM base AS deps
 WORKDIR /app
+# The schema comes along because installing runs `prisma generate` (see the
+# postinstall script), and generating needs something to generate from.
 COPY package.json pnpm-lock.yaml .npmrc ./
+COPY prisma ./prisma
 # No BuildKit cache mount here on purpose. It speeds up rebuilds locally, but
 # Railway's builder requires cache ids to carry its own prefix and rejects a
 # bare `id=pnpm` outright — the whole build fails to parse. Losing a warm pnpm
