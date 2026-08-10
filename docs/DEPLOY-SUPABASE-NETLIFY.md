@@ -265,8 +265,7 @@ invisible to them.
 | `SESSION_COOKIE_NAME` | `bb_session` |
 | `CRON_SECRET` | A long random string. Generate with `openssl rand -hex 32` |
 | `MAIL_TRANSPORT` | `console` (see [Inviting other teachers](#inviting-other-teachers)) |
-| `LIVE_UPDATES` | `off` — **set this**, see below |
-| `NEXT_PUBLIC_LIVE_UPDATES` | `off` — **set this too**; it is the browser half of the same switch |
+| `NEXT_PUBLIC_LIVE_UPDATES` | `off` — optional; saves the browser two wasted attempts. **Build-time**, so it only takes effect on the next build |
 | `S3_BUCKET` | `card-art` |
 | `S3_REGION` | From Step 2 |
 | `S3_ENDPOINT` | From Step 2 |
@@ -599,13 +598,22 @@ correctly so. Every legitimate change has a button in the educator UI.
 Netlify bills functions by **how long they run**, not just how often. Three
 things drive that bill, in order:
 
-**1. Turn live updates off.** `LIVE_UPDATES=off` and
-`NEXT_PUBLIC_LIVE_UPDATES=off`. The app pushes changes over a connection meant
-to stay open for a lesson; Netlify kills the function at its execution limit
-instead, and the client reconnects. Each cycle bills a full function lifetime,
-per open tab, for the whole lesson. With the switch off, clients poll every 30
-seconds — a fraction of a second of compute each. This is the single largest
-saving available, and it costs only instant updates.
+**1. Live updates are off here automatically.** The app pushes changes over a
+connection meant to stay open for a lesson; Netlify kills the function at its
+execution limit instead, and the client reconnects — each cycle billing a full
+function lifetime, per open tab, all day. On a real deployment that was 7.5
+GB-hours in 24 hours from one idle browser tab.
+
+The server now detects that it is running on a Lambda-backed host and declines
+the stream in about 15 ms instead, so clients poll every 30 seconds. Nothing to
+configure. `LIVE_UPDATES=on` forces it back on if you move to a host that can
+sustain it; `NEXT_PUBLIC_LIVE_UPDATES=off` additionally stops the browser
+making the two attempts it needs to learn this for itself — worth setting, but
+it is baked in at **build** time, so it does nothing until the next deploy.
+
+If your compute is high and you expect it not to be, check the average duration
+per request: total GB-hours × 3600 ÷ requests. A page render is under half a
+second. Anything near ten seconds means something is holding a function open.
 
 **2. Keep the database in the same region as the functions.** Every function is
 billed for the time it spends waiting on a query. A database an ocean away does

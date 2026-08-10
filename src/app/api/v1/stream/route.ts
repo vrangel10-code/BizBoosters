@@ -1,6 +1,7 @@
 import { requireAuth } from '@/server/auth/guard';
 import { subscribe, type ServerEvent } from '@/server/events/bus';
 import { prisma } from '@/server/db';
+import { streamingAllowed } from '@/server/streaming';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,18 +17,17 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(): Promise<Response> {
   /**
-   * The off switch, for hosts that bill function time.
+   * Decline where a stream cannot be sustained.
    *
-   * A serverless platform kills this function at its execution limit, so a
-   * stream it can never sustain still costs a full function lifetime per
-   * attempt. With LIVE_UPDATES=off the route declines immediately and clients
-   * poll instead — cheap, and the only thing lost is instant updates.
+   * 204 rather than 404: this is "not offered here", not "no such endpoint".
+   * EventSource treats any non-stream response as an error, so the client falls
+   * back to polling — and it does so after a few milliseconds instead of after
+   * the platform has billed a full function lifetime.
    *
-   * 204 rather than 404 on purpose: this is "not offered here", not "no such
-   * endpoint", and EventSource treats any non-stream response as an error and
-   * falls back exactly as intended.
+   * This check is what makes the fallback safe even for a browser still running
+   * an older copy of the page: the decision is made here, not in the bundle.
    */
-  if (process.env.LIVE_UPDATES === 'off') {
+  if (!streamingAllowed()) {
     return new Response(null, { status: 204 });
   }
 
