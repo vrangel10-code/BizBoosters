@@ -15,6 +15,22 @@ export const dynamic = 'force-dynamic';
  * dropped stream or a second app instance costs latency, never data.
  */
 export async function GET(): Promise<Response> {
+  /**
+   * The off switch, for hosts that bill function time.
+   *
+   * A serverless platform kills this function at its execution limit, so a
+   * stream it can never sustain still costs a full function lifetime per
+   * attempt. With LIVE_UPDATES=off the route declines immediately and clients
+   * poll instead — cheap, and the only thing lost is instant updates.
+   *
+   * 204 rather than 404 on purpose: this is "not offered here", not "no such
+   * endpoint", and EventSource treats any non-stream response as an error and
+   * falls back exactly as intended.
+   */
+  if (process.env.LIVE_UPDATES === 'off') {
+    return new Response(null, { status: 204 });
+  }
+
   const { user } = await requireAuth({ allowPasswordChangePending: true });
 
   const rooms = await prisma.enrollment.findMany({

@@ -265,6 +265,8 @@ invisible to them.
 | `SESSION_COOKIE_NAME` | `bb_session` |
 | `CRON_SECRET` | A long random string. Generate with `openssl rand -hex 32` |
 | `MAIL_TRANSPORT` | `console` (see [Inviting other teachers](#inviting-other-teachers)) |
+| `LIVE_UPDATES` | `off` — **set this**, see below |
+| `NEXT_PUBLIC_LIVE_UPDATES` | `off` — **set this too**; it is the browser half of the same switch |
 | `S3_BUCKET` | `card-art` |
 | `S3_REGION` | From Step 2 |
 | `S3_ENDPOINT` | From Step 2 |
@@ -591,6 +593,29 @@ invariant; changing either by hand will make the 03:00 reconciliation fail, and
 correctly so. Every legitimate change has a button in the educator UI.
 
 ---
+
+## Keeping function compute down
+
+Netlify bills functions by **how long they run**, not just how often. Three
+things drive that bill, in order:
+
+**1. Turn live updates off.** `LIVE_UPDATES=off` and
+`NEXT_PUBLIC_LIVE_UPDATES=off`. The app pushes changes over a connection meant
+to stay open for a lesson; Netlify kills the function at its execution limit
+instead, and the client reconnects. Each cycle bills a full function lifetime,
+per open tab, for the whole lesson. With the switch off, clients poll every 30
+seconds — a fraction of a second of compute each. This is the single largest
+saving available, and it costs only instant updates.
+
+**2. Keep the database in the same region as the functions.** Every function is
+billed for the time it spends waiting on a query. A database an ocean away does
+not just feel slow, it multiplies the bill for every page anyone opens. See
+[Appendix C](#appendix-c--moving-the-database-to-sit-beside-the-app).
+
+**3. Make sure `S3_PUBLIC_BASE_URL` is set.** Without it every card image is
+served *through* a function instead of straight from storage — twenty cards on
+a page becomes twenty invocations. Right-click a card image and copy its
+address: if it starts with `/api/v1/images/`, that variable is missing or wrong.
 
 ## What you lose on Netlify
 
